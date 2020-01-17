@@ -1,5 +1,8 @@
 # Prerequisites
 *.d
+*.o
+trafficSNMP
+core
 
 # Object files
 *.o
