@@ -25,9 +25,6 @@
 #include <arpa/inet.h>
 #include <semaphore.h>
 #include <syslog.h>
-#include <pthread.h>
-
-
 
 #include <sys/types.h>
 #include <sys/ipc.h>
@@ -41,6 +38,10 @@
 #include <sys/timeb.h>
 #include <getopt.h>
 
+#include <net-snmp/net-snmp-config.h>
+#include <net-snmp/net-snmp-includes.h>
+
+
 #include "ifaceData.h"                                                                                                     
 
 int             _verbose=0;
@@ -48,6 +49,8 @@ int             _verbose=0;
 pid_t           _fatherPID=0;
 pid_t           _sonPID=0;
 pid_t           _grandsonPID=0;
+
+int 			_workers = MAX_WORKERS;
 
 int             _to_epics=0;		// register into EPICS
 int             _to_files=0;		// send data to CSV Files (usually  /data/bw)
@@ -62,14 +65,12 @@ int				_speech_prio=8;		// minimum priority value to trigger speech messages
 
 MYSQL       	*_mysql_connection_handler=NULL;
 
-extern char     server[];
-void 			*_shmArea=NULL; 
+devicesShm 		*_shmDevicesArea=NULL; 
+interfacesShm	*_shmInterfacesArea=NULL; 
 
 int 			_useSNMP = 0;
 
 int 			_maxRandomStartDelay = 30;
-
-pthread_mutex_t _threadMutex;
 
 
 //------------------------------------------------------------------------                                   
@@ -92,7 +93,6 @@ printf ("Trend file generator\n\n");
 printf ("USAGE: %s [options]\n", prgname);
 printf ("Options:\n");
 printf ("  -v   Verbose mode\n");
-printf ("  -n   dev_id (from 'devices' table) \n ");
 printf ("  -e   send data to epics (deactivated by default) \n");
 printf ("  -h   send data to historic DB  (deactivated by default) \n");
 printf ("  -m   send data to MEMORY DB  (deactivated by default) \n");
@@ -110,91 +110,54 @@ fflush(stdout);
 
 //------------------------------------------------------------------------
 
-void exitfunction()
-{
-kill(_grandsonPID, SIGTERM);	
-//kill(0, SIGTERM);		// kill everyone on his group (all his children)
-exit(0);
-}
-
-//------------------------------------------------------------------------
-
-// called on termination signals
- 
-void endGrandson (int signum)  {
-int stat=0; 
-
-printf("\n\n KILLING GRANDSON with SIGTERM\n");
-kill(_grandsonPID, SIGTERM);	
-printf("WAITING for GRANDSON to DIE! \n\n");
-waitpid(_grandsonPID, &stat, 0);
-exit(0); 
-}
-
-//------------------------------------------------------------------------
-
-// called on termination signals
- 
-void endSon (int signum)  {
-int stat=0; 
-
-printf("\n\n KILLING SON with SIGTERM\n");
-kill(_sonPID, SIGTERM);	
-printf("WAITING for SON to DIE! \n\n");
-waitpid(_sonPID, &stat, 0);
-exit(0); 
-}
-
-//------------------------------------------------------------------------
-
 // evaluate alarm conditions based on traffic (heuristic condition pending!!!)
 
-int eval_alarm(device_data *d, int n)
+int evalAlarm(deviceData *d, interfaceData *iface)
 {
 struct tm   stm;
 
 // return to normal conditions are always evaluated, to avoid long (and unrallistic) intervals of failure
-if (  d->ifs[n].alarm_status != ALARM_OK )
-	if (detect_normal_traffic_01(d, n))
+if (  iface->alarm_status != ALARM_OK )
+	if (detect_normal_traffic_01(d, iface))
 		{
-		d->ifs[n].alarm_status = ALARM_OK;
-		report_alarm(d,n);
+		iface->alarm_status = ALARM_OK;
+		report_alarm(d, iface);
 		}
 
-localtime_r(&(d->ifs[n].last_access.time), &stm);
+localtime_r(&(iface->last_access.time), &stm);
 
 // EVALUATE FIRST EXCLUSION INTERVAL ONLY IF INI-FIN values have been fully specified
-if (in_interval(&stm, d->ifs[n].exc_01_ini_h, d->ifs[n].exc_01_ini_m, d->ifs[n].exc_01_fin_h, d->ifs[n].exc_01_fin_m))
+if (in_interval(&stm, iface->exc_01_ini_h, iface->exc_01_ini_m, iface->exc_01_fin_h, iface->exc_01_fin_m))
 	return(1);
 
 // second exclusion interval
-if (in_interval(&stm, d->ifs[n].exc_02_ini_h, d->ifs[n].exc_02_ini_m, d->ifs[n].exc_02_fin_h, d->ifs[n].exc_02_fin_m))
+if (in_interval(&stm, iface->exc_02_ini_h, iface->exc_02_ini_m, iface->exc_02_fin_h, iface->exc_02_fin_m))
 	return(1);
 
-if (d->ifs[n].alarm_lo < 30)		// zero threshold means no alarm for this interface!
+if (iface->alarm_lo < 30)		// zero threshold means no alarm for this interface!
   return(1);
 
 // following calculation will be only evaluated if we are not (already) in ALARM status
-if (  d->ifs[n].alarm_status != ALARM_ERROR )	
+if (  iface->alarm_status != ALARM_ERROR )	
 	{
 	int			CALC_IN_THR=5.0;
 	int			CALC_OUT_THR=5.0;
 	
 	double      incalc=0, outcalc=0;
 	
-	detect_low_traffic_01((d->ifs[n].ibw_buf), &incalc);
-	detect_low_traffic_01((d->ifs[n].obw_buf), &outcalc);
+	detect_low_traffic_01((iface->ibw_buf), &incalc);
+	detect_low_traffic_01((iface->obw_buf), &outcalc);
 
 	// INPUT condition:
-	if ( incalc > CALC_IN_THR && d->ifs[n].ibw_buf[0] < d->ifs[n].alarm_lo && d->ifs[n].ibw_buf[1] < d->ifs[n].alarm_lo )
+	if ( incalc > CALC_IN_THR && iface->ibw_buf[0] < iface->alarm_lo && iface->ibw_buf[1] < iface->alarm_lo )
 	    {
-		d->ifs[n].alarm_status = ALARM_ERROR;
-		report_alarm(d,n);
+		iface->alarm_status = ALARM_ERROR;
+		report_alarm(d, iface);
 		}
-	else if ( outcalc > CALC_OUT_THR && d->ifs[n].obw_buf[0] < d->ifs[n].alarm_lo && d->ifs[n].obw_buf[1] < d->ifs[n].alarm_lo )
+	else if ( outcalc > CALC_OUT_THR && iface->obw_buf[0] < iface->alarm_lo && iface->obw_buf[1] < iface->alarm_lo )
 	    {
-		d->ifs[n].alarm_status = ALARM_ERROR;
-		report_alarm(d,n);
+		iface->alarm_status = ALARM_ERROR;
+		report_alarm(d, iface);
 		}
 	}
 return(1);
@@ -202,7 +165,7 @@ return(1);
 
 //------------------------------------------------------------------------
 
-int saveToFile( device_data *d )
+int saveToFile( deviceData *d )
 {
 FILE        *f=NULL;
 char        fname[500];
@@ -251,30 +214,11 @@ for (i=0 ; i<d->nInterfaces ; i++)
 return(1);
 }    
 
-                          
-//------------------------------------------------------------------------
-
-// this is the child. he invokes telnet/ssh iteratively, in case
-// parent decides to end communication
-
-int   processChild( device_data *d )
-{
-char 	aux[500];
-int     end=0, ret=0;
-
-while (!end)
-  {
- 
-  usleep(300000);
-  }	
-	             
-return(ret);
-}
 
 //------------------------------------------------------------------------
 
 // this process send commands to his child, then receive and proceses answers
-int   processParent( device_data *d, int infd, int outfd, pid_t child_pid, int dev_id )
+int   processParent( deviceData *d, int infd, int outfd, pid_t child_pid, int dev_id )
 {
 int 				end=0;
 int 				iface=0;
@@ -292,13 +236,13 @@ if (d->authenticate && d->authenticate(d, infd, outfd))
     {
 	// check UP to 3 pings to device!
 
-	if ( ping(d->ip) == 0 || ping(d->ip)==0 || ping(d->ip)==0 )  {
-		printf("\n device %s (%s) OK via ICMP. ", d->ip, d->name);
-        update_devices_mem_ping_time(d->dev_id);
-		}
-	else 
-		printf("\n device %s (%s) UNREACHABLE via ICMP. ", d->ip, d->name);
-	fflush(stdout); 
+//	if ( ping(d->ip) == 0 || ping(d->ip)==0 || ping(d->ip)==0 )  {
+//		printf("\n device %s (%s) OK via ICMP. ", d->ip, d->name);
+  //      update_devices_mem_ping_time(d->dev_id);
+	//	}
+	//else 
+	//	printf("\n device %s (%s) UNREACHABLE via ICMP. ", d->ip, d->name);
+	//fflush(stdout); 
 	  
     for (iface=0 ; iface<d->nInterfaces ; iface++)
   	  {
@@ -306,7 +250,8 @@ if (d->authenticate && d->authenticate(d, infd, outfd))
 		{
 		if (d->process) {  
 		    d->process(d, infd, outfd, child_pid, dev_id, iface);
-		    if ( fabs(d->ifs[iface].ibw - ((shm_area *)_shmArea)->ibw) > 5 ) {
+		 
+		 /*   if ( fabs(d->ifs[iface].ibw - ((shm_area *)_shmArea)->ibw) > 5 ) {
 				((shm_area *)_shmArea)->ibwPrev = ((shm_area *)_shmArea)->ibw; 
 				((shm_area *)_shmArea)->ibw = d->ifs[iface].ibw;
 				((shm_area *)_shmArea)->lastUpdate = time(NULL);
@@ -315,7 +260,7 @@ if (d->authenticate && d->authenticate(d, infd, outfd))
 				((shm_area *)_shmArea)->obwPrev = ((shm_area *)_shmArea)->obw; 
 				((shm_area *)_shmArea)->obw = d->ifs[iface].obw;
 				((shm_area *)_shmArea)->lastUpdate = time(NULL);
-				}
+				} */
 		    }
 		}	
 	  }	
@@ -339,20 +284,7 @@ if (d->authenticate && d->authenticate(d, infd, outfd))
     if ( ((current_time = time(NULL)) > (old_time + (_reconnect_period * 60))) || comm_error )
   	  {
   	  old_time = current_time;
-	  dbread (d, dev_id);
-
-	  if (_verbose > 2)			printf("\n It's high time for a reconnection!");
-		
-	  if (d->disconnect)
-              d->disconnect( d, infd, outfd );
-      sleep (1);
-	  if (d->authenticate && d->authenticate(d, infd, outfd))
-		comm_error=0;
-	  else	
-		{
-		comm_error=1;
-  		printf("\n Authentication error in reconnection! \n");
-  		}
+	  //dbread (d, dev_id);
 
   	  sleep (9);
   	  }   
@@ -371,8 +303,6 @@ if (d->authenticate && d->authenticate(d, infd, outfd))
 	db_keepalive(_process_name);
   	}
   	
-  if (d->disconnect)
-    d->disconnect( d, infd, outfd );
   }
 
 kill(child_pid, SIGINT);          
@@ -381,69 +311,13 @@ return(1);
 
 //------------------------------------------------------------------------
 
-//
-// Adjust ponters to (authenticate, procees, parse and disconnect) functions
-// accordingly with vendor / model
-//
-
-int initDevPointers(device_data *d)
-{
-
-if ( _useSNMP || d->snmp > 0) {
-    d->authenticate = snmp_authenticate;
-    d->process = snmp_process;
-    d->parse_bw = snmp_parse_bw;
-    d->disconnect = snmp_disconnect;
-	_sample_period = (_sample_period < 30) ? 30 : _sample_period;  // min: 30 seconds sample period...
-	}
-
-return(1);
-}
-
-//------------------------------------------------------------------------
-
-//
-// launch SON and GRANDSON to get data via telnet, ssh, SNMP, etc.
-//
-
-int launchWorkers (int *retfd, device_data *devd, int dev_id)   {
-
-// set mt pid on SHM
-((shm_area *) _shmArea)->sonPid = _sonPID = getpid();  
-
-// we fork to call telnet / ssh
-_grandsonPID = forkpty(retfd, NULL, NULL, NULL);
-
-if( _grandsonPID < 0)  {
-	printf("\n\n FORK ERROR !!! \n\n");
-	exit(-1);
-	}
-else if (_grandsonPID == 0)  {  // we are in the grandson
-	// set mt pid on SHM
-	((shm_area *) _shmArea)->grandsonPid = _grandsonPID = getpid(); 
-	processChild(devd);
-	}
-else 		// we are in the son
-	{
-	signal(SIGTERM, endGrandson);
-	signal(SIGQUIT, endGrandson);
-	signal(SIGINT, endGrandson);
-
-	atexit(exitfunction);
-	processParent(devd, *retfd, *retfd, _grandsonPID, dev_id);
-	}
-return 1;
-}
-
-//------------------------------------------------------------------------
-
 // basic program argument parsing
 
-int parseArguments(int argc, char *argv[], int *dev_id) {
+int parseArguments(int argc, char *argv[]) {
 
 int     		opt=0;
 
-while ((opt = getopt(argc, argv, "M:s:d:n:r:ehfmvaS")) != -1)
+while ((opt = getopt(argc, argv, "M:s:d:r:ehfmvaS")) != -1)
     {
     switch (opt)
         {
@@ -469,11 +343,6 @@ while ((opt = getopt(argc, argv, "M:s:d:n:r:ehfmvaS")) != -1)
 
         case 'a':
             _send_alarm=1;
-        break;
-
-        case 'n':
-      		if(optarg)
-          	*dev_id=atoi(optarg);
         break;
 
         case 'M':
@@ -502,7 +371,7 @@ while ((opt = getopt(argc, argv, "M:s:d:n:r:ehfmvaS")) != -1)
 
         case 'd':
 	    if(optarg)
-        	strcpy(server, optarg);
+        	strcpy(_server, optarg);
         break;
 
 
@@ -512,18 +381,153 @@ while ((opt = getopt(argc, argv, "M:s:d:n:r:ehfmvaS")) != -1)
         }
     }
 
-if (*dev_id<0)
-  {
-  printUsage(argv[0]);
-  exit(EXIT_FAILURE);
-  }
-
 if ( _to_epics==0 && _to_files==0 && _to_memdb==0 && _to_hisdb==0 )
-  printf("\n\n ATENTION:   collected data will not be recorded to DB, MEM, FILE, etc!  (It's your call dude (your time, your CPU!) \n\n");
+  printf("\n\n ATENTION:   collected data will not be recorded to DB, MEM, FILE, etc!  \n\n");
 
-sprintf(_process_name, "TRAFSTATS_%i", *dev_id);
+sprintf(_process_name, "trafficSNMP");
 
 return 1;
+}
+
+//------------------------------------------------------------------------
+
+void mainLoop()  {
+
+while(1) {
+
+	printf("\n mainLoop ... ");
+	fflush(stdout);
+	sleep (2);
+
+	}
+
+
+}
+
+//------------------------------------------------------------------------
+
+// pre - forked worker
+
+void workerRun()  {
+int 	i=0;
+int 	uninitDevFound=0;
+
+if (_verbose > 1) {
+	printf("\n Worker %i start!", getpid());
+	fflush(stdout);
+	}	
+
+while (1) {
+	// check for devices not yet initialized
+
+	pthread_mutex_lock (& (_shmDevicesArea->lock));
+	for (i=0,uninitDevFound=-1 ; i<_shmDevicesArea->nDevices ; i++) {
+		if (_shmDevicesArea->d[i].enable > 0 &&  _shmDevicesArea->d[i].snmpConfigured == 0) {
+			_shmDevicesArea->d[i].snmpConfigured = 1 ; // mark as  'in configuration process' 
+			uninitDevFound = i;
+			break;
+			}
+		}
+	pthread_mutex_unlock (& (_shmDevicesArea->lock));
+
+	if (uninitDevFound > -1)	{ // device requires SNMP initialization 
+
+		if (_verbose > 1) {
+			printf("\n Worker %i initializing SNMP for device (%s, %s)", getpid(), _shmDevicesArea->d[uninitDevFound].name, _shmDevicesArea->d[uninitDevFound].ip);
+			fflush(stdout);
+			}
+
+		if ( snmpCheckParameters( &(_shmDevicesArea->d[uninitDevFound]), _shmInterfacesArea )																										 == 1 ) {    // OK!
+			pthread_mutex_lock (& (_shmDevicesArea->lock));
+			_shmDevicesArea->d[uninitDevFound].snmpConfigured = 2 ; // mark as  'configured' 
+			pthread_mutex_unlock (& (_shmDevicesArea->lock));
+			}
+		else  {
+			pthread_mutex_lock (& (_shmDevicesArea->lock));
+			_shmDevicesArea->d[uninitDevFound].snmpConfigured = 3 ; // mark as 'ERROR' 
+			pthread_mutex_unlock (& (_shmDevicesArea->lock));
+			printf("\n Worker %i:  device (%s, %s) snmpCheckParameters ERROR!", getpid(), _shmDevicesArea->d[uninitDevFound].name, _shmDevicesArea->d[uninitDevFound].ip);
+			fflush(stdout);				
+			}
+		}
+	else {   // all devices configured, we can now get traffic counters
+
+
+		}
+
+
+	sleep (1);
+	}
+
+}
+
+//------------------------------------------------------------------------
+
+// launch children (MAX_WORKERS).
+
+int launchWorkers ( int workers )   {
+
+int 				i=0;
+pid_t				workerPID=0;
+
+for ( i=0 ; i < workers ; i++ )  {
+
+	if ( (workerPID = fork()) > 0 )  {
+		}
+	else if(workerPID == 0)  {    // worker
+		workerRun();
+		}
+    else {
+		printf ("\n\n\n FORK ERROR !!!");
+		fflush(stdout);
+		exit(-1);
+	}  
+}
+
+return 1;
+}
+
+//------------------------------------------------------------------------
+
+// initialize Shared memory areas for main process (father) and workers
+
+int shmInit() {
+
+pthread_mutexattr_t mattr, ifaceAttr;
+
+// we create shared memory area for devices
+if ( (_shmDevicesArea = (devicesShm *) create_shared_memory(sizeof(devicesShm))) == NULL )  {
+    printf("\n\n ATENTION:   shmArea ERROR on devices!  \n\n");
+    exit(EXIT_FAILURE);
+    }     
+
+// reset shm memory
+memset(_shmDevicesArea, 0, sizeof(devicesShm));
+
+// intialize mutex lock to assure mutual exclusion to shm area
+pthread_mutexattr_init( &mattr );
+pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_ERRORCHECK_NP);
+pthread_mutexattr_setpshared(&mattr, PTHREAD_PROCESS_SHARED);
+
+pthread_mutex_init(& (_shmDevicesArea->lock), &mattr);
+
+// we now create shared memory area for Interfaces
+if ( (_shmInterfacesArea = (interfacesShm *) create_shared_memory(sizeof(interfacesShm))) == NULL )  {
+    printf("\n\n ATENTION:   shmArea ERROR on Interfaces!  \n\n");
+    exit(EXIT_FAILURE);
+    }     
+
+// reset shm memory
+memset(_shmInterfacesArea, 0, sizeof(interfacesShm));
+
+// intialize mutex lock to assure mutual exclusion to shm area
+pthread_mutexattr_init( &ifaceAttr );
+pthread_mutexattr_settype(&ifaceAttr, PTHREAD_MUTEX_ERRORCHECK_NP);
+pthread_mutexattr_setpshared(&ifaceAttr, PTHREAD_PROCESS_SHARED);
+
+pthread_mutex_init(& (_shmInterfacesArea->lock), &ifaceAttr);
+
+return(1);
 }
 
 //------------------------------------------------------------------------
@@ -531,112 +535,34 @@ return 1;
 
 int main(int argc, char *argv[])
 {
-int 				dev_id=-1;
-int 				retfd=0;
-device_data			devd;
-
-pthread_attr_t 		attr;
-
-// Pthreads setup: initialize mutex
-
-pthread_mutex_init(&_threadMutex, NULL);
-pthread_attr_init(&attr);
-pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
 // basic info about the program
 printf("\n Program %s started. PID: %i.  ", argv[0], getpid()); fflush(stdout);
 printf("\n Compiled: %s...\n\n", __TIMESTAMP__); fflush(stdout);
 
 // default database server
-strcpy(server, "dbserver01");
+strcpy(_server, "dbserver01");
 
 // check arguments!
-parseArguments(argc, argv, &dev_id);
+parseArguments(argc, argv);
 
-// we create shared memory area in which parent, son and grandson will be writting
-if ( (_shmArea = create_shared_memory(sizeof(shm_area))) == NULL )  {
-    printf("\n\n ATENTION:   shmArea ERROR!  \n\n");
-    exit(EXIT_FAILURE);
-    }     
+// crate SHared memory areas
+shmInit();
 
-// reset shm memory, and set STARTING flag
-memset(_shmArea, 0, sizeof(shm_area));
-((shm_area *) _shmArea)->starting = 1;
-((shm_area *) _shmArea)->lastUpdate = time(NULL);
-
-// set mt pid on SHM
-((shm_area *) _shmArea)->fatherPid = _fatherPID = getpid();  
-
-// wait randomly to slow start in case of many processes
-randomDelay(1, _maxRandomStartDelay);
-
-memset(&devd, 0, sizeof(device_data));
-while (dbread (&devd, dev_id) <= 0)
+while (dbread (_shmDevicesArea, _shmInterfacesArea) <= 0)
   {
-  printf("\n\n No interfaces configured on 'devices_bw' for this device ID (%i) ! \n\n", dev_id);
+  printf("\n\n No devices configured? check device and device_bw tables ! \n\n");
   sleep(1);
   };
 
-delete_from_db_mem (dev_id);
+// reinit in memory database
+delete_from_db_mem ();
 
-// initialization process according to detect device type!
-initDevPointers(&devd);
+// fork children
+launchWorkers (_workers); 
 
-while (1) {
-
-	// try 3 pings
-	if ( ping(devd.ip)!=0 &&  ping(devd.ip)!=0 && ping(devd.ip)!=0 ) {
-		printf("\n device %s not available via ICMP. waiting 30 seconds...", devd.ip);
-		fflush(stdout);
-		sleep(30);
-		}
-	else {
-
-		if ( ((shm_area *) _shmArea)->starting || (time(NULL) - (((shm_area *) _shmArea)->lastUpdate)) > (6 * _sample_period) )  {
-
-			// not the begining of program execution	
-			((shm_area *) _shmArea)->starting = 0;	
-			// reset timming mechanism to give new childs some time
-			((shm_area *) _shmArea)->lastUpdate = time(NULL);
-
-			// log actions if we kill processes (it is not the first loop!)
-			if ( ((shm_area *) _shmArea)->grandsonPid > 0 || ( ((shm_area *) _shmArea)->sonPid > 0) ) {
-				openlog("Logs", LOG_PID, LOG_USER);
-				syslog(LOG_INFO, "Killing SON and GRANDSON for device_id: %i", dev_id);
-				closelog();
-				}
-	
-			// if there are processes running, kill them (we kill SON and SON kills  grandson)	
-			if ( ((shm_area *) _shmArea)->sonPid > 0) {
-				int stat=0; 
-				printf("\n\n KILLING SON with SIGTERM\n");
-				kill(((shm_area *) _shmArea)->sonPid, SIGTERM);	
-				sleep(2);
-				printf("WAITING for SON to DIE! \n\n");
-				waitpid(((shm_area *) _shmArea)->sonPid, &stat, 0);
-				}
-
-			// main FORK 
-			_sonPID = fork();
-			if ( _sonPID < 0)  { // Error
-				printf("\n\n FORK ERROR !!! \n\n");
-				exit(-1);
-				}
-			else if (_sonPID == 0) { // we are in the son
-				launchWorkers (&retfd, &devd, dev_id);
-				}
-			else {		// in the father
-				signal(SIGTERM, endSon);
-				signal(SIGQUIT, endSon);
-				signal(SIGINT, endSon);
-				}	
-			}
-
-		sleep(30);	
-		shmPrint( ((shm_area *) _shmArea) );
-		}
-	}
-
+// control loop
+mainLoop();
 
 exit(0);
 }

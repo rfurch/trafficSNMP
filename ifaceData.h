@@ -1,9 +1,22 @@
 
+#include <net-snmp/net-snmp-config.h>
+#include <net-snmp/net-snmp-includes.h>
+
+#ifndef PTHREAD_INCLUDED
+ #define  PTHREAD_INCLUDED
+ #include <pthread.h>
+#endif
+
 #define			MAXBUF				200
 #define			MAXAVGBUF			10
 
-#define			TELNET_ACCESS		1
-#define			SSH_ACCESS			2
+#define     MAX_DEVICES       10000
+#define     MAX_INTERFACES    30000
+
+#define     MAX_WORKERS       5
+
+#define			TELNET_ACCESS		  1
+#define			SSH_ACCESS			  2
 
 // CLI_ACC   access types on CLI
 #define			CLI_ACCESS_TELNET		1
@@ -95,9 +108,10 @@
 #define			ALARM_OK			101
 
 // structure to store interfaces properties
-typedef struct iface_data
+typedef struct interfaceData
   {
-  int 				      ifid;
+  int               deviceId;
+  int 				      interfaceId;
   unsigned char			enable;
   unsigned char			status;					// 0: uninitialized, 1: running					
   char				      name[MAXBUF];
@@ -122,13 +136,13 @@ typedef struct iface_data
   short int			    exc_02_ini_h, exc_02_ini_m, exc_02_fin_h, exc_02_fin_m ;	
   char              oidIndex[200];   // OID Index for interface in IF-TABLE
 
-  }iface_data;
+  }interfaceData;
 
 // structure to store device properties
 
-typedef struct device_data
+typedef struct deviceData
   {
-  int 			      dev_id;
+  int 			      deviceId;
   unsigned char 	enable;
   unsigned char 	status;					// 0: uninitialized, 1: running					
   char 		      	access_type;			// 0: none, 1: telnet, 2:ssh
@@ -138,8 +152,10 @@ typedef struct device_data
   char 			      ena_prompt[MAXBUF];
   char 			      dis_prompt[MAXBUF];
   struct timeb		last_access;
+  time_t          lastPingOK;
+  time_t          lastSNMPOK;
   int 			      nInterfaces;
-  iface_data		  *ifs;	
+  interfaceData		*ifs;	
   long long int 	ncycle;
   short int 		  getrunn;
   short	int		    cli_acc;
@@ -149,21 +165,45 @@ typedef struct device_data
   char 			      snmpCommunity[MAXBUF];
   int             snmpVersion;
   int             use64bitsCounters;
+  int             snmpConfigured;   // 0: no   1: in process  2: OK 3: ERROR
+  int             snmpCaptured;     // 0: no   1: in process  2: OK 3: ERROR
+  
 
-  int (*init)( struct device_data *d);
-  int (*authenticate)( struct device_data *d, int infd, int outfd );
-  int (*process)( struct device_data *d, int infd, int outfd, pid_t child_pid, int dev_id,int iface );
-  int (*parse_bw)( struct device_data *d, int iface, char *b);
-  int (*disconnect)( struct device_data *d, int infd, int outfd );
+  netsnmp_session         session, *ss;
+  netsnmp_pdu             *pdu;
+  netsnmp_pdu             *response;
+  netsnmp_variable_list   *vars;
 
-  }device_data;
+  int (*init)( struct deviceData *d);
+  int (*authenticate)( struct deviceData *d, int infd, int outfd );
+  int (*process)( struct deviceData *d, int infd, int outfd, pid_t child_pid, int dev_id,int iface );
+  int (*parse_bw)( struct deviceData *d, int iface, char *b);
+  int (*disconnect)( struct deviceData *d, int infd, int outfd );
+
+  }deviceData;
 
 // structure to handle a single  list of devices
 typedef struct device_list
   {
   int 				      nDevices;
-  device_data       *d;
+  deviceData       *d;
   }device_list;
+
+// structure to share Devices information among pool of (forked) workers
+
+typedef struct  devicesShm  {
+  pthread_mutex_t   lock;
+  deviceData       d[MAX_DEVICES];
+  int               nDevices;
+  }devicesShm;
+
+// structure to share Interfaces information among pool of (forked) workers
+
+typedef struct  interfacesShm  {
+  pthread_mutex_t   lock;
+  interfaceData     d[MAX_INTERFACES];
+  int               nInterfaces;
+  }interfacesShm;
 
 typedef struct  shm_area
     {
@@ -181,7 +221,6 @@ extern int _verbose;
 
 extern int             _verbose;
 extern pid_t           _grandsonPID;
-extern pv_list         _pvl;
 extern int             _to_epics;
 extern int             _to_files;
 extern int             _to_memdb;
@@ -192,7 +231,8 @@ extern char            _process_name[];
 extern pthread_mutex_t _threadMutex;
 
 
-extern char     		server[];
+extern char     		  _server[];
+extern device_list		_devList;
 
 
 
@@ -212,7 +252,7 @@ int str_normalize(unsigned char *str, int slen);
 int send_cmd(int fd, char  *cmd);
 int avg_basic(long int * buffer, short ini, short fin, double *avg);
 int detect_low_traffic_01(long int * buffer, double *calc);
-int detect_normal_traffic_01(device_data *d, int n);
+int detect_normal_traffic_01(deviceData *d, interfaceData *iface);
 int in_interval(struct tm *current, short inih, short inim, short finh, short finm);
 int str_extract_from(char *s, int c1, char *ret);
 int send_control_d(int fd);
@@ -221,12 +261,12 @@ void* create_shared_memory(size_t size);
 // db.c
 int db_connect();
 int db_disconnect();
-int to_db_mem (device_data *d);
-int dbread (device_data *devd, int devid);
-int to_db_hist (device_data *d);
-int delete_from_db_mem (int devid);
+int to_db_mem (deviceData *d);
+int dbread (devicesShm *shmDev, interfacesShm *shmInt);
+int to_db_hist (deviceData *d);
+int delete_from_db_mem ();
 int db_keepalive(char *name);
-int report_alarm(device_data *d, int n);
+int report_alarm(deviceData *d, interfaceData *iface);
 int update_devices_mem_ping_time(int dev_id);
 
 
@@ -235,22 +275,23 @@ char *adc_rtrim(char *s);
 char *adc_trim(char *s);
 
 // main.c
-int eval_alarm(device_data *d, int n);
+int evalAlarm(deviceData *d, interfaceData *iface) ;
 
 // icmp.c
 int ping(char *address);
 
 // snmp.c
-int getIndexOfInterfaces(long snmpVersion, device_data *d, char *walkFirstOID, char *community, char *ipAddress );
+int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstOID );
 int getIndexOfInterface(long snmpVersion, char *interfaceName, char *walkFirstOID, char *community, char *ipAddress, char *oidIndex );
 int getInOutCounters (long snmpVersion, char *community, char *ipAddress, char *inCounterOid, char *outCounterOid, unsigned long long int *inCounter, unsigned long long int *outCounter);
-int snmpGetSysDesrc (long snmpVersion, char *community, char *ipAddress, char *result );
-int snmpVerifyIfXTable (long snmpVersion, char *community, char *ipAddress, unsigned long long int *inCounter );
+int snmpGetSysDesrc (long snmpVersion, char *community, char *ip, char *result );
+int snmpVerifyIfXTable (deviceData *d, unsigned long long int *inCounter );
 
-int snmp_authenticate( device_data *d, int infd, int outfd );
-int snmp_disconnect( device_data *d, int infd, int outfd );
-int snmp_parse_bw( device_data *d, int n, char *b);
-int snmp_process( device_data *d, int infd, int outfd, pid_t child_pid, int dev_id, int iface );
+int 	snmpCheckParameters( deviceData *d, interfacesShm *shmInt );
+
+int snmp_disconnect( deviceData *d, int infd, int outfd );
+int snmp_parse_bw( deviceData *d, interfaceData *iface);
+int snmp_process( deviceData *d, int infd, int outfd, pid_t child_pid, int dev_id, int iface );
 
 //------------------------------------------------------------------------
 //------------------------------------------------------------------------

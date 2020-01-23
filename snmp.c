@@ -4,7 +4,6 @@
  // that ID is then used to get IN / OUT octets counters
  //
 
-#include <net-snmp/net-snmp-config.h>
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -16,12 +15,12 @@
 #include <time.h>
 #include <pthread.h>
 
-
 #include <sys/select.h>
 #include <stdio.h>
 #include <netdb.h>
 #include <arpa/inet.h>
 
+#include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 
 #define NETSNMP_DS_WALK_INCLUDE_REQUESTED	        1
@@ -41,11 +40,12 @@ char           *end_name = NULL;
 
 //-------------------------------------------------------------
 
-// authentication handling...
-// for SNMP (v1) we just try to figure out community name...
 
-int 	snmp_authenticate( device_data *d, int infd, int outfd )
-{
+// for SNMP (v1) we just try to figure out community name
+// version, etc
+
+int 	snmpCheckParameters( deviceData *d, interfacesShm *shmInt) {
+int retval = 1;
 
 if ( snmpGetSysDesrc (SNMP_VERSION_2c, "Vostok3KA", d->ip, NULL) == 0 ) {
     strcpy(d->snmpCommunity, "Vostok3KA");
@@ -64,34 +64,21 @@ else if ( snmpGetSysDesrc (SNMP_VERSION_1, "public", d->ip, NULL) == 0) {
     d->snmpVersion = SNMP_VERSION_1;
     }
 else {
-    printf("\n\n Unable to contact device with SNMP version 1 / 2c and given community \n\n");
+    printf("\n\n Unable to contact device (%s,%s) with SNMP version 1 / 2c and given community \n\n", d->name, d->ip);
     sleep(5);
-    exit(0);
+    retval = 0;
 }
 
-if ( snmpVerifyIfXTable (d->snmpVersion, d->snmpCommunity, d->ip, NULL ) == 0)
+if ( snmpVerifyIfXTable (d, NULL ) == 0)
     d->use64bitsCounters = 1;
 
 // get interface position in IF-TABLE. In case of error we cannot continue...
-if ( getIndexOfInterfaces( d->snmpVersion, d, "1.3.6.1.2.1.2.2.1.2", d->snmpCommunity, d->ip) != 0 ) {
+if ( getIndexOfInterfaces( d, shmInt, "1.3.6.1.2.1.2.2.1.2") != 0 ) {
     printf("\n\n UNABLE to find some Interfaces  !! \n\n" );
-    exit (-1);
+    retval = 0;
     }
 
-return(1);
-}
-
-//------------------------------------------------------------------------
-
-// in the case of SNMP we do nothing....
-
-int snmp_disconnect( device_data *d, int infd, int outfd )
-{
-if (_verbose > 4)
-  printf("\n SNMP Disconnection (stub function, nothing done!) \n");
-  
-fflush(stdout);  
-return(1);
+return (retval);
 }
 
 //------------------------------------------------------------------------
@@ -100,47 +87,47 @@ return(1);
 // d: device data structure
 // n: index of interface to capture
 
-int snmp_parse_bw( device_data *d, int n, char *b)
+int snmp_parse_bw( deviceData *d, interfaceData *iface)
 {
-unsigned long long int   		lli1=0, lli2=0;
+unsigned long long int  lli1=0, lli2=0;
 struct timeb 			stb;
 double					delta_t=0;
 char                    inCounterOid[400],outCounterOid[400];
 
 ftime(&stb); 
-d->ifs[n].last_access=stb;
-d->ifs[n].msec_prev = d->ifs[n].msec;
-d->ifs[n].msec = stb.time*1000+stb.millitm;
-delta_t =  ((double)(d->ifs[n].msec - d->ifs[n].msec_prev))/1000; // delta t in seconds 
+iface->last_access=stb;
+iface->msec_prev = iface->msec;
+iface->msec = stb.time*1000+stb.millitm;
+delta_t =  ((double)(iface->msec - iface->msec_prev))/1000; // delta t in seconds 
 
-d->ifs[n].ibytes_prev_prev = d->ifs[n].ibytes_prev;
-d->ifs[n].obytes_prev_prev = d->ifs[n].obytes_prev;
-d->ifs[n].ibytes_prev = d->ifs[n].ibytes;
-d->ifs[n].obytes_prev = d->ifs[n].obytes;
+iface->ibytes_prev_prev = iface->ibytes_prev;
+iface->obytes_prev_prev = iface->obytes_prev;
+iface->ibytes_prev = iface->ibytes;
+iface->obytes_prev = iface->obytes;
 
 // we set this values to 0 to take some action below
-d->ifs[n].ibytes = 0;
-d->ifs[n].obytes = 0;
+iface->ibytes = 0;
+iface->obytes = 0;
 
 if (d->use64bitsCounters) {
-    sprintf(inCounterOid, "1.3.6.1.2.1.31.1.1.1.6.%s", d->ifs[n].oidIndex);
-    sprintf(outCounterOid, "1.3.6.1.2.1.31.1.1.1.10.%s", d->ifs[n].oidIndex);
+    sprintf(inCounterOid, "1.3.6.1.2.1.31.1.1.1.6.%s", iface->oidIndex);
+    sprintf(outCounterOid, "1.3.6.1.2.1.31.1.1.1.10.%s", iface->oidIndex);
     }
 else {
-sprintf(inCounterOid, "1.3.6.1.2.1.2.2.1.10.%s", d->ifs[n].oidIndex);
-sprintf(outCounterOid, "1.3.6.1.2.1.2.2.1.16.%s", d->ifs[n].oidIndex);
+sprintf(inCounterOid, "1.3.6.1.2.1.2.2.1.10.%s", iface->oidIndex);
+sprintf(outCounterOid, "1.3.6.1.2.1.2.2.1.16.%s", iface->oidIndex);
 }
 
 if ( getInOutCounters (d->snmpVersion, d->snmpCommunity, d->ip, inCounterOid, outCounterOid, &lli1,  &lli2) != 0) 
     printf("\n ERROR getting IN / OUT counters !!! \n");
 
-d->ifs[n].ibytes = lli1;
-d->ifs[n].obytes = lli2;
+iface->ibytes = lli1;
+iface->obytes = lli2;
 
-if ( d->ifs[n].ibytes_prev == 0 ) // just starting, don't do anything
+if ( iface->ibytes_prev == 0 ) // just starting, don't do anything
   {
   }
-else if ( d->ifs[n].ibytes_prev > d->ifs[n].ibytes || d->ifs[n].obytes_prev > d->ifs[n].obytes ) // prev > current, there was a clear counter, counters return to 0, etc, don't do any calculations
+else if ( iface->ibytes_prev > iface->ibytes || iface->obytes_prev > iface->obytes ) // prev > current, there was a clear counter, counters return to 0, etc, don't do any calculations
   {
       // do nothing, we can figure out results though....
   }
@@ -149,76 +136,64 @@ else
   double auxin=0;
   double auxout=0;
 
-  auxin = (8*(double)(d->ifs[n].ibytes - d->ifs[n].ibytes_prev)) / delta_t;
+  auxin = (8*(double)(iface->ibytes - iface->ibytes_prev)) / delta_t;
   if (auxin < (((long long int)10) * 1000 * 1000 * 1000))  // < 10Gbps 
-	d->ifs[n].ibw =  auxin;
+	iface->ibw =  auxin;
   
-  auxout = (8*(double)(d->ifs[n].obytes - d->ifs[n].obytes_prev)) / delta_t;
+  auxout = (8*(double)(iface->obytes - iface->obytes_prev)) / delta_t;
   if (auxout < (((long long int)10) * 1000 * 1000 * 1000))  // < 10Gbps 
-	d->ifs[n].obw =  auxout;  
+	iface->obw =  auxout;  
 
-  if ( d->ifs[n].ibytes_prev_prev == 0 ) // second pass after starting the program, it's a good idea to use current 'instant' traffic as average!
+  if ( iface->ibytes_prev_prev == 0 ) // second pass after starting the program, it's a good idea to use current 'instant' traffic as average!
 	{
 	int j=0;
 
 	for (j=0 ; j<MAXAVGBUF ; j++)	// copy FIRST sample to the WHOLE buffer
-		d->ifs[n].ibw_buf[j] = d->ifs[n].ibw;
-	d->ifs[n].ibw_a	= d->ifs[n].ibw_b = d->ifs[n].ibw_c = d->ifs[n].ibw;
+		iface->ibw_buf[j] = iface->ibw;
+	iface->ibw_a	= iface->ibw_b = iface->ibw_c = iface->ibw;
 
 	for (j=0 ; j<MAXAVGBUF ; j++)	// copy FIRST sample to the WHOLE buffer
-		d->ifs[n].obw_buf[j] = d->ifs[n].obw;
-	d->ifs[n].obw_a	= d->ifs[n].obw_b = d->ifs[n].obw_c = d->ifs[n].obw;
+		iface->obw_buf[j] = iface->obw;
+	iface->obw_a	= iface->obw_b = iface->obw_c = iface->obw;
 	}
   else
   	  {
 	  // shift and copy AVG buffer.  Last value is always in the first position, previous in the second an so on...
-	  memmove( &(d->ifs[n].ibw_buf[1]), &(d->ifs[n].ibw_buf[0]), sizeof((d->ifs[n].ibw_buf[0])) * (MAXAVGBUF - 1) );  
-	  d->ifs[n].ibw_buf[0] = d->ifs[n].ibw;
+	  memmove( &(iface->ibw_buf[1]), &(iface->ibw_buf[0]), sizeof((iface->ibw_buf[0])) * (MAXAVGBUF - 1) );  
+	  iface->ibw_buf[0] = iface->ibw;
 	  
-	  d->ifs[n].ibw_a =   0.5 * d->ifs[n].ibw + 0.5 * d->ifs[n].ibw_a;
-	  d->ifs[n].ibw_b =   0.1 * d->ifs[n].ibw + 0.9 * d->ifs[n].ibw_b;
-	  d->ifs[n].ibw_c =   0.02 * d->ifs[n].ibw + 0.98 * d->ifs[n].ibw_c;
+	  iface->ibw_a =   0.5 * iface->ibw + 0.5 * iface->ibw_a;
+	  iface->ibw_b =   0.1 * iface->ibw + 0.9 * iface->ibw_b;
+	  iface->ibw_c =   0.02 * iface->ibw + 0.98 * iface->ibw_c;
 
 	  // shift and copy AVG buffer.  Last value is always in the first position, previous in the second an so on...
-	  memmove( &(d->ifs[n].obw_buf[1]), &(d->ifs[n].obw_buf[0]), sizeof((d->ifs[n].obw_buf[0])) * (MAXAVGBUF - 1) );  
-	  d->ifs[n].obw_buf[0] = d->ifs[n].obw;
+	  memmove( &(iface->obw_buf[1]), &(iface->obw_buf[0]), sizeof((iface->obw_buf[0])) * (MAXAVGBUF - 1) );  
+	  iface->obw_buf[0] = iface->obw;
 
-	  d->ifs[n].obw_a =   0.5 * d->ifs[n].obw + 0.5 * d->ifs[n].obw_a;
-	  d->ifs[n].obw_b =   0.1 * d->ifs[n].obw + 0.9 * d->ifs[n].obw_b;
-	  d->ifs[n].obw_c =   0.02 * d->ifs[n].obw + 0.98 * d->ifs[n].obw_c;
+	  iface->obw_a =   0.5 * iface->obw + 0.5 * iface->obw_a;
+	  iface->obw_b =   0.1 * iface->obw + 0.9 * iface->obw_b;
+	  iface->obw_c =   0.02 * iface->obw + 0.98 * iface->obw_c;
 	  }
   }
 
 if (d->ncycle > 10)  // alarms only after startup window
   if (_send_alarm)
-	eval_alarm(d, n);
+	evalAlarm(d, iface);
   
 if (_verbose > 1)
   {
   printf("\n\n --------------------------- ");
-  printf("\n interface: %s  (%s)", d->ifs[n].name, d->ifs[n].description);
+  printf("\n interface: %s  (%s)", iface->name, iface->description);
   printf("\n delta t:  %lf", delta_t);
-  printf("\n ibw: %lf ibw_a: %lf", d->ifs[n].ibw, d->ifs[n].ibw_a);
-  printf("\n obw: %lf obw_a: %lf", d->ifs[n].obw, d->ifs[n].obw_a);
-  printf("\n ibytes: %lli obytes: %lli", d->ifs[n].ibytes, d->ifs[n].obytes);
-  printf("\n ibytes prev: %lli obytes prev: %lli", d->ifs[n].ibytes_prev, d->ifs[n].obytes_prev);
+  printf("\n ibw: %lf ibw_a: %lf", iface->ibw, iface->ibw_a);
+  printf("\n obw: %lf obw_a: %lf", iface->obw, iface->obw_a);
+  printf("\n ibytes: %lli obytes: %lli", iface->ibytes, iface->obytes);
+  printf("\n ibytes prev: %lli obytes prev: %lli", iface->ibytes_prev, iface->obytes_prev);
   printf("\n --------------------------- \n\n"); 
   fflush(stdout);
   }  
 
 return(0);
-}
-
-//------------------------------------------------------------------------
-
-int snmp_process( device_data *d, int infd, int outfd, pid_t child_pid, int dev_id, int iface )
-{
-char 				buffer_aux[8000];
-
-if (d->parse_bw)
-    d->parse_bw( d, iface, buffer_aux );		
-
-return(1);
 }
 
 //-------------------------------------------------------------
@@ -227,14 +202,10 @@ return(1);
 // for a give IP and community, get Interface from IF TABLE (no mibs)
 // and fill last digit for interface (function returns 0 on success)
 // e.g.:  goes through 1.3.6.1.2.1.2.2.1.2 (snmpwalk) and if interface "eth1"  is found
-// ind position  1.3.6.1.2.1.2.2.1.2.11, return '11' in oidIndex
+// in position  1.3.6.1.2.1.2.2.1.2.11, return '11' in oidIndex
 
-int getIndexOfInterfaces(long snmpVersion, device_data *d, char *walkFirstOID, char *community, char *ipAddress )
+int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstOID )
 {
-    netsnmp_session         session, *ss;
-    netsnmp_pdu             *pdu, *response;
-    netsnmp_variable_list   *vars;
-   // int             arg;
     oid             name[MAX_OID_LEN];
     size_t          name_length;
     oid             root[MAX_OID_LEN];
@@ -247,6 +218,10 @@ int getIndexOfInterfaces(long snmpVersion, device_data *d, char *walkFirstOID, c
     int             exitval = -1;
     struct timeval  tv_a, tv_b;
     int             iface=0, ifaceFound=0;;
+    netsnmp_session         session, *ss;
+    netsnmp_pdu             *pdu;
+    netsnmp_pdu             *response;
+    netsnmp_variable_list   *vars;
 
     // specified on the command line 
     rootlen = MAX_OID_LEN;
@@ -261,17 +236,17 @@ int getIndexOfInterfaces(long snmpVersion, device_data *d, char *walkFirstOID, c
     end_oid[end_len-1]++;
 
     //init_snmp("myprog");
-    snmp_sess_init( &session );
-    session.version = snmpVersion;
+    snmp_sess_init( & (session) );
+    session.version = d->snmpVersion;
 
-    session.community = (u_char *)strdup(community);
+    session.community = (unsigned char *)strdup(d->snmpCommunity);
     session.community_len = strlen((char *)session.community);
-    session.peername = strdup(ipAddress);
+    session.peername = strdup(d->ip);
 
     //  open an SNMP session 
-    ss = snmp_open(&session);
+    ss = snmp_open(&(session));
     if (ss == NULL) {
-        snmp_sess_perror("snmpwalk", &session);
+        snmp_sess_perror("snmpwalk", &(session));
         goto out;
     }
 
@@ -299,7 +274,7 @@ int getIndexOfInterfaces(long snmpVersion, device_data *d, char *walkFirstOID, c
         // do the request 
         if (netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID, NETSNMP_DS_WALK_TIME_RESULTS_SINGLE))
             netsnmp_get_monotonic_clock(&tv_a);
-        status = snmp_synch_response(ss, pdu, &response);
+        status = snmp_synch_response(ss, pdu, & (response));
         if (status == STAT_SUCCESS) {
             if (netsnmp_ds_get_boolean(NETSNMP_DS_APPLICATION_ID, NETSNMP_DS_WALK_TIME_RESULTS_SINGLE))
                 netsnmp_get_monotonic_clock(&tv_b);
@@ -316,11 +291,11 @@ int getIndexOfInterfaces(long snmpVersion, device_data *d, char *walkFirstOID, c
                     snprint_objid(mybuff, 299, vars->name, vars->name_length);
 
                     // get interface position in IF-TABLE. In case of error we cannot continue...
-                    for (iface = 0 ; iface < d->nInterfaces ; iface++)   {
-                        if (strcmp(d->ifs[iface].name, (char *)(vars->val.string)) == 0) {
+                    for (iface = 0 ; iface < shmInt->nInterfaces ; iface++)   {
+                        if (strcasecmp(shmInt->d[iface].name, (char *)(vars->val.string)) == 0) {
                             if ( _verbose > 1)            
                                 printf("\n --- FOUND:  |%s|%s| \n" , vars->val.string, mybuff);
-                            strcpy(d->ifs[iface].oidIndex, strrchr(mybuff, '.') + 1);
+                            strcpy(shmInt->d[iface].oidIndex, strrchr(mybuff, '.') + 1);
                             ifaceFound++;
                             }
                         }    
@@ -338,7 +313,7 @@ int getIndexOfInterfaces(long snmpVersion, device_data *d, char *walkFirstOID, c
                         (vars->type != SNMP_NOSUCHINSTANCE)) {
                         
                         //  not an exception value 
-                        if (snmp_oid_compare(name, name_length,vars->name, vars->name_length) >= 0) {
+                        if (snmp_oid_compare(name, name_length, vars->name, vars->name_length) >= 0) {
                             fprintf(stderr, "Error: OID not increasing: ");
                             fprint_objid(stderr, name, name_length);
                             fprintf(stderr, " >= ");
@@ -357,7 +332,8 @@ int getIndexOfInterfaces(long snmpVersion, device_data *d, char *walkFirstOID, c
                 //  error in response, print it 
                 running = 0;
                 if (response->errstat == SNMP_ERR_NOSUCHNAME) {
-                    printf("End of MIB\n");
+                    if (_verbose > 1)
+                        printf("End of MIB\n");
                 } else {
                     fprintf(stderr, "Error in packet.\nReason: %s\n", snmp_errstring(response->errstat));
                     if (response->errindex != 0) {
@@ -440,10 +416,10 @@ int getIndexOfInterface(long snmpVersion, char *interfaceName, char *walkFirstOI
     end_oid[end_len-1]++;
 
     //init_snmp("myprog");
-    snmp_sess_init( &session );
+    //snmp_sess_init( &session );
     session.version = snmpVersion;
 
-    session.community = (u_char *)strdup(community);
+    session.community = (unsigned char *)strdup(community);
     session.community_len = strlen((char *)session.community);
     session.peername = strdup(ipAddress);
 
@@ -485,7 +461,8 @@ int getIndexOfInterface(long snmpVersion, char *interfaceName, char *walkFirstOI
                     snprint_objid(mybuff, 299, vars->name, vars->name_length);
                     
                     if (strcmp(interfaceName, (char *)(vars->val.string)) == 0) {
-                        printf("\n --- FOUND:  |%s|%s| \n" , vars->val.string, mybuff);
+                        if (_verbose > 0)
+                            printf("\n --- FOUND:  |%s|%s| \n" , vars->val.string, mybuff);
                         
                         strcpy(oidIndex, strrchr(mybuff, '.') + 1);
 
@@ -518,7 +495,8 @@ int getIndexOfInterface(long snmpVersion, char *interfaceName, char *walkFirstOI
                 //  error in response, print it 
                 running = 0;
                 if (response->errstat == SNMP_ERR_NOSUCHNAME) {
-                    printf("End of MIB\n");
+                    if (_verbose > 0)
+                        printf("End of MIB\n");
                 } else {
                     fprintf(stderr, "Error in packet.\nReason: %s\n", snmp_errstring(response->errstat));
                     if (response->errindex != 0) {
@@ -585,10 +563,10 @@ int getInOutCounters (long snmpVersion, char *community, char *ipAddress, char *
     names[current_name++] = outCounterOid;
     
     //init_snmp("myprog");
-    snmp_sess_init( &session );
+    //snmp_sess_init( &session );
     session.version = snmpVersion;
 
-    session.community = (u_char *)strdup(community);
+    session.community = (unsigned char *)strdup(community);
     session.community_len = strlen((char *)session.community);
     session.peername = strdup(ipAddress);
     
@@ -718,12 +696,9 @@ out:
 // and returns 0 in case of success. (only in this case 'result' contains a valid string)
 // result can be null if we don't need SYS Description string
 
-int snmpGetSysDesrc (long snmpVersion, char *community, char *ipAddress, char *result )
+int snmpGetSysDesrc (long snmpVersion, char *community, char *ip, char *result )
 {
-    netsnmp_session session, *ss;
-    netsnmp_pdu    *pdu;
-    netsnmp_pdu    *response;
-    netsnmp_variable_list *vars;
+
     int             count;
     int             current_name = 0;
     char           *names[SNMP_MAX_CMDLINE_OIDS];
@@ -733,7 +708,11 @@ int snmpGetSysDesrc (long snmpVersion, char *community, char *ipAddress, char *r
     int             failures = 0;
     int             exitval = 1;
     int             counter=0;
-
+    netsnmp_session         session, *ss;
+    netsnmp_pdu             *pdu;
+    netsnmp_pdu             *response;
+    netsnmp_variable_list   *vars;
+    
     SOCK_STARTUP;
     names[current_name++] = ".1.3.6.1.2.1.1.1.0";
     
@@ -741,16 +720,16 @@ int snmpGetSysDesrc (long snmpVersion, char *community, char *ipAddress, char *r
         result[0] = 0;    
 
     //init_snmp("myprog");
-    snmp_sess_init( &session );
+    snmp_sess_init( & (session) );
     session.version = snmpVersion;
 
-    session.community = (u_char *)strdup(community);
+    session.community = (unsigned char *)strdup(community);
     session.community_len = strlen((char *)session.community);
-    session.peername = strdup(ipAddress);
+    session.peername = strdup(ip);
     
-    ss = snmp_open(&session);
+    ss = snmp_open(& (session));
     if (ss == NULL) {  // diagnose snmp_open errors with the input netsnmp_session pointer 
-        snmp_sess_perror("snmpget", &session);
+        snmp_sess_perror("snmpget", &(session));
         goto out;
     }
 
@@ -773,14 +752,15 @@ int snmpGetSysDesrc (long snmpVersion, char *community, char *ipAddress, char *r
     // If the Get Request fails, note the OID that caused the error,
     // "fix" the PDU (removing the error-prone OID) and retry.
   retry:
-    status = snmp_synch_response(ss, pdu, &response);
+    status = snmp_synch_response(ss, pdu, &(response));
     if (status == STAT_SUCCESS) {
         if (response->errstat == SNMP_ERR_NOERROR) {
             for (vars = response->variables, counter=0; vars; counter++, vars = vars->next_variable) {
                 print_variable(vars->name, vars->name_length, vars);
 
                 if (vars->type == ASN_OCTET_STR) {
-                    printf("\n es un STRING:  %s \n ", vars->val.string);
+                    if (_verbose > 0)
+                        printf("\n es un STRING:  %s \n ", vars->val.string);
                     if (result)
                         strcpy(result, (char *)vars->val.string);
                     }
@@ -847,13 +827,10 @@ out:
 // 1.3.6.1.2.1.31.1.1.1.10 (ifHCOutOctets)
 // returns 0 in case of success. (only in this case 'counter' contains a valid string)
 
-int snmpVerifyIfXTable (long snmpVersion, char *community, char *ipAddress, unsigned long long int *inCounter )
+int snmpVerifyIfXTable (deviceData *d, unsigned long long int *inCounter )
 {
-    netsnmp_session session, *ss;
-    netsnmp_pdu    *pdu;
-    netsnmp_pdu    *response;
-    netsnmp_variable_list *vars;
-    int             count;
+
+    int             count = 0;
     int             current_name = 0;
     char           *names[SNMP_MAX_CMDLINE_OIDS];
     oid             name[MAX_OID_LEN];
@@ -862,21 +839,25 @@ int snmpVerifyIfXTable (long snmpVersion, char *community, char *ipAddress, unsi
     int             failures = 0;
     int             exitval = 1;
     int             counter=0;
+    netsnmp_session         session, *ss;
+    netsnmp_pdu             *pdu;
+    netsnmp_pdu             *response;
+    netsnmp_variable_list   *vars;
 
     SOCK_STARTUP;
     names[current_name++] = ".1.3.6.1.2.1.31.1.1.1.6.1";
 
     //init_snmp("myprog");
-    snmp_sess_init( &session );
-    session.version = snmpVersion;
+    snmp_sess_init( & (session) );
+    session.version = d->snmpVersion;
 
-    session.community = (u_char *)strdup(community);
+    session.community = (unsigned char *)strdup( d->snmpCommunity );
     session.community_len = strlen((char *)session.community);
-    session.peername = strdup(ipAddress);
+    session.peername = strdup(d->ip);
     
-    ss = snmp_open(&session);
+    ss = snmp_open(& (session));
     if (ss == NULL) {  // diagnose snmp_open errors with the input netsnmp_session pointer 
-        snmp_sess_perror("snmpget", &session);
+        snmp_sess_perror("snmpget", & (session));
         goto out;
     }
 
@@ -899,7 +880,7 @@ int snmpVerifyIfXTable (long snmpVersion, char *community, char *ipAddress, unsi
     // If the Get Request fails, note the OID that caused the error,
     // "fix" the PDU (removing the error-prone OID) and retry.
   retry:
-    status = snmp_synch_response(ss, pdu, &response);
+    status = snmp_synch_response(ss, pdu, &(response));
     if (status == STAT_SUCCESS) {
         if (response->errstat == SNMP_ERR_NOERROR) {
             for (vars = response->variables, counter=0; vars; counter++, vars = vars->next_variable) {
@@ -909,7 +890,8 @@ int snmpVerifyIfXTable (long snmpVersion, char *community, char *ipAddress, unsi
                     long i64 = 0;
                     i64 = vars->val.counter64->low;
                     i64 |= vars->val.counter64->high << 32;
-                    printf("\n es un COUNTER64:  |%li| \n ", i64);
+                    if (_verbose > 0)
+                        printf("\n es un COUNTER64:  |%li| \n ", i64);
 
                     if (inCounter)    
                         *inCounter = (unsigned long long int) i64 ;
@@ -967,88 +949,6 @@ out:
     SOCK_CLEANUP;
     return exitval;
 }                               /* end main() */
-
-//-------------------------------------------------------------
-//-------------------------------------------------------------
-
-int mmain(int argc, char *argv[])
-{
-char                        oidIndex[200];
-unsigned long long int      outCounter=0, inCounter=0;
-char                        result[1000], snmpCommunity[200];
-char                        inCounterOid[200],outCounterOid[200];
-char                        interfaceName[300] = "eth0.52";
-char                        ipAddress[300] = "172.16.114.152";
-long                        snmpVersion=-1;
-int                         use64bitsCounters=0;
-
-if (argc < 3)  {
-    printf("\n\n get Interface Traffic counters \n\n Use: %s ipAddress interfaceName \n\n", argv[0]);
-    exit(-1);
-}
-
-strcpy(ipAddress, argv[1]);
-strcpy(interfaceName, argv[2]);
-
-printf("\n ------------------------------------------\n"); fflush(stdout);
-
-if ( snmpGetSysDesrc (SNMP_VERSION_2c, "Vostok3KA", ipAddress, result) == 0 ) {
-    strcpy(snmpCommunity, "Vostok3KA");
-    snmpVersion = SNMP_VERSION_2c;
-    }
-else if ( snmpGetSysDesrc (SNMP_VERSION_2c, "public", ipAddress, result) == 0) {
-    strcpy(snmpCommunity, "public");
-    snmpVersion = SNMP_VERSION_2c;
-    }
-else if ( snmpGetSysDesrc (SNMP_VERSION_1, "Vostok3KA", ipAddress, result) == 0 ) {
-    strcpy(snmpCommunity, "Vostok3KA");
-    snmpVersion = SNMP_VERSION_1;
-    }
-else if ( snmpGetSysDesrc (SNMP_VERSION_1, "public", ipAddress, result) == 0) {
-    strcpy(snmpCommunity, "public");
-    snmpVersion = SNMP_VERSION_1;
-    }
-else {
-    printf("\n\n Unable to contact device with SNMP version 1 / 2c and given community \n\n");
-    exit(0);
-}
-
-if ( snmpVerifyIfXTable (snmpVersion, snmpCommunity, ipAddress, &inCounter ) == 0)
-    use64bitsCounters = 1;
-
-printf("\n\n Using Community: %s Version: %s 64 bits counters: %s", snmpCommunity, (snmpVersion == SNMP_VERSION_2c) ? "2c" : "1", (use64bitsCounters>0) ? "yes" : "no");
-
-if ( getIndexOfInterface( snmpVersion, interfaceName, "1.3.6.1.2.1.2.2.1.2", snmpCommunity, ipAddress, oidIndex) != 0 ) {
-    printf("\n\n UNABLE to get Interface Index for |%s|: !! \n\n", interfaceName);
-    exit (-1);
-    }
-
-    printf("\n Interface Index: %s (%s) \n", oidIndex, interfaceName);
-    if (use64bitsCounters) {
-        sprintf(inCounterOid, "1.3.6.1.2.1.31.1.1.1.6.%s", oidIndex);
-        sprintf(outCounterOid, "1.3.6.1.2.1.31.1.1.1.10.%s", oidIndex);
-        }
-    else {
-    sprintf(inCounterOid, "1.3.6.1.2.1.2.2.1.10.%s", oidIndex);
-    sprintf(outCounterOid, "1.3.6.1.2.1.2.2.1.16.%s", oidIndex);
-    }
-
-    while (1) {
-
-        if ( getInOutCounters ( snmpVersion, snmpCommunity, ipAddress, inCounterOid, outCounterOid, &inCounter,  &outCounter) == 0) 
-            printf("\n Counters (IN: %lli1 / OUT: %lli): ", inCounter,  outCounter);
-        else 
-            printf("\n ERROR getting IN / OUT counters !!! \n");
-
-        fflush(stdout);    
-
-        sleep(10);
-    }
-
-printf("\n ------------------------------------------\n"); fflush(stdout);
-
-exit(0);
-}
 
 //-------------------------------------------------------------
 //-------------------------------------------------------------

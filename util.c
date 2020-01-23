@@ -503,17 +503,17 @@ return(1);
 
 // all values in input avg buffer AND output avg buffer MUST be over threshold
 // VERY restrictive condition for 'normal traffic'
-int detect_normal_traffic_01(device_data *d, int n)
+int detect_normal_traffic_01(deviceData *d, interfaceData *iface)
 {
 int i=0;
 
 // any value in INPUT OR OUTPUT below threshold means no compliance (abnormal traffic condition)
 for (i=0 ; i<MAXAVGBUF ; i++)
-	if ( d->ifs[n].ibw_buf[i] < d->ifs[n].alarm_lo )
+	if ( iface->ibw_buf[i] < iface->alarm_lo )
 		return(0);
 
 for (i=0 ; i<MAXAVGBUF ; i++)
-	if ( d->ifs[n].obw_buf[i] < d->ifs[n].alarm_lo )
+	if ( iface->obw_buf[i] < iface->alarm_lo )
 		return(0);
 
 return(1);
