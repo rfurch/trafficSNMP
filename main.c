@@ -58,7 +58,7 @@ int             _to_memdb=0;		// write to DB
 int             _to_hisdb=0;        // write to historic DB
 int             _send_alarm=0;      // send LOW Traffic Alarms                                    
 char            _process_name[100];
-int 			_sample_period=10;   // default sample time in seconds
+int 			_sample_period=30;   // default sample time in seconds
 int 			_reconnect_period=10;   // default reconnec time in minutes
 
 int				_speech_prio=8;		// minimum priority value to trigger speech messages
@@ -100,10 +100,11 @@ printf ("  -M   Maximum start delay (default 30 sec) (Prevents DB hangs) \n");
 printf ("  -f   send data to FILES  (deactivated by default) \n");
 printf ("  -a   send alarms  (deactivated by default) \n");
 printf ("  -d   database server  (default dbserver01) \n");
-printf ("  -s   sample period (default 10 seconds) \n");
+printf ("  -s   sample period (default 30 seconds) \n");
 printf ("  -S   try to capture values via SNMP (Overrides devices table parameter!) \n");
 printf ("  -r   reconnect period (default 10 minutes) \n");
 printf ("  -p   minimum priority to trigger voice messages (default=8) \n");
+printf ("  -w   concurrent workers (default=%i) \n", MAX_WORKERS);
 printf ("============================================================\n\n");
 fflush(stdout);
 }
@@ -165,52 +166,49 @@ return(1);
 
 //------------------------------------------------------------------------
 
-int saveToFile( deviceData *d )
+int saveToFile( interfaceData *ifs )
 {
 FILE        *f=NULL;
 char        fname[500];
 struct tm   stm;
-int 		i=0;
 double      inavg=0, outavg=0;
 double      incalc=0, outcalc=0;
 
 if (_verbose > 3)
-  printf("\n\n Saving data to file:");
+	printf("\n\n Saving data to file:");
 
-for (i=0 ; i<d->nInterfaces ; i++)
-  {
-  if ( strlen(d->ifs[i].file_var_name) > 0 )
-	{
-	sprintf(fname, "/data/bw/%s", d->ifs[i].file_var_name);
-	if  ( (f = fopen(fname, "a")) != NULL )
-  	  {
-	  localtime_r(&(d->ifs[i].last_access.time), &stm);
+if (ifs->ibytes_prev > 0 && ifs->obytes_prev > 0 ) {
+	if ( strlen(ifs->file_var_name) > 0 ) {
+		sprintf(fname, "/data/bw/%s", ifs->file_var_name);
+		if  ( (f = fopen(fname, "a")) != NULL )  {
+			localtime_r(&(ifs->last_access.time), &stm);
 
-	  if (! avg_basic((d->ifs[i].ibw_buf), 0, (MAXAVGBUF-1), &inavg) )
-		  inavg=0;
+			if (! avg_basic((ifs->ibw_buf), 0, (MAXAVGBUF-1), &inavg) )
+				inavg=0;
 
-	  if (! avg_basic((d->ifs[i].obw_buf), 0, (MAXAVGBUF-1), &outavg) )
-		  outavg=0;
+			if (! avg_basic((ifs->obw_buf), 0, (MAXAVGBUF-1), &outavg) )
+				outavg=0;
 
-	  detect_low_traffic_01((d->ifs[i].ibw_buf), &incalc);
-	  detect_low_traffic_01((d->ifs[i].obw_buf), &outcalc);
-	  
-	  fprintf(f, "%li.%03i,%4i%02i%02i%02i%02i%02i.%03i,%lli,%lli,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%li,%li,%.4lf,%.4lf\r\n",
-			  d->ifs[i].last_access.time, d->ifs[i].last_access.millitm, 
-              stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min, stm.tm_sec, 
-              d->ifs[i].last_access.millitm, 
-	          d->ifs[i].ibytes, d->ifs[i].obytes, d->ifs[i].ibw/1000, d->ifs[i].obw/1000, 
-	          d->ifs[i].ibw_a/1000, d->ifs[i].obw_a/1000,
-	          d->ifs[i].ibw_b/1000, d->ifs[i].obw_b/1000, d->ifs[i].ibw_c/1000, d->ifs[i].obw_c/1000, 
-			  inavg/1000, outavg/1000,
-	          d->ifs[i].ierrors, d->ifs[i].oerrors,
-			  incalc, outcalc
-			  );
-      fclose(f);
-      }
-    usleep(5000);
-    }
-  }
+			detect_low_traffic_01((ifs->ibw_buf), &incalc);
+			detect_low_traffic_01((ifs->obw_buf), &outcalc);
+			
+			fprintf(f, "%li.%03i,%4i%02i%02i%02i%02i%02i.%03i,%lli,%lli,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%li,%li,%.4lf,%.4lf\r\n",
+					ifs->last_access.time, ifs->last_access.millitm, 
+					stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min, stm.tm_sec, 
+					ifs->last_access.millitm, 
+					ifs->ibytes, ifs->obytes, ifs->ibw/1000, ifs->obw/1000, 
+					ifs->ibw_a/1000, ifs->obw_a/1000,
+					ifs->ibw_b/1000, ifs->obw_b/1000, ifs->ibw_c/1000, ifs->obw_c/1000, 
+					inavg/1000, outavg/1000,
+					ifs->ierrors, ifs->oerrors,
+					incalc, outcalc
+					);
+			fclose(f);
+			}
+		}
+	}
+
+
 return(1);
 }    
 
@@ -267,8 +265,8 @@ if (d->authenticate && d->authenticate(d, infd, outfd))
 	
 	if (d->ncycle > 0 && !comm_error)     
 	  {
-	  if (_to_files)
-    	saveToFile( d );
+	  //if (_to_files)
+    //	saveToFile( d );
 
 	  if (_to_memdb)
   		to_db_mem ( d );
@@ -317,7 +315,7 @@ int parseArguments(int argc, char *argv[]) {
 
 int     		opt=0;
 
-while ((opt = getopt(argc, argv, "M:s:d:r:ehfmvaS")) != -1)
+while ((opt = getopt(argc, argv, "M:s:d:r:w:ehfmvaS")) != -1)
     {
     switch (opt)
         {
@@ -327,6 +325,10 @@ while ((opt = getopt(argc, argv, "M:s:d:r:ehfmvaS")) != -1)
 
         case 'e':
             _to_epics=1;
+        break;
+
+        case 'w':
+            _workers = atoi(optarg);
         break;
 
         case 'f':
@@ -357,7 +359,7 @@ while ((opt = getopt(argc, argv, "M:s:d:r:ehfmvaS")) != -1)
 
         case 's':
       		if(optarg)
-				_sample_period = (atoi(optarg) >= 1) ? atoi(optarg) : 1;
+				_sample_period = (atoi(optarg) >= 1) ? atoi(optarg) : 30;
         break;
 
         case 'S':
@@ -393,15 +395,20 @@ return 1;
 
 void mainLoop()  {
 
+int i=0; 
+
 while(1) {
 
-	printf("\n mainLoop ... ");
+	printf("\n           mainLoop ... ");
+	if (_verbose > 6)
+		for (i=0 ; i<_shmDevicesArea->nDevices ; i++)
+			printf("\n            device %i snmpConfigured: %i snmpCaptured: %i ", _shmDevicesArea->d[i].deviceId, _shmDevicesArea->d[i].snmpConfigured, _shmDevicesArea->d[i].snmpCaptured);
+	
+
 	fflush(stdout);
-	sleep (2);
+	sleep (5);
 
 	}
-
-
 }
 
 //------------------------------------------------------------------------
@@ -409,8 +416,10 @@ while(1) {
 // pre - forked worker
 
 void workerRun()  {
-int 	i=0;
-int 	uninitDevFound=0;
+int 	i=0, iface=0;
+int 	devToInitFound=0;
+int 	devToMeasureFound=0;
+time_t	t=0;
 
 if (_verbose > 1) {
 	printf("\n Worker %i start!", getpid());
@@ -421,38 +430,74 @@ while (1) {
 	// check for devices not yet initialized
 
 	pthread_mutex_lock (& (_shmDevicesArea->lock));
-	for (i=0,uninitDevFound=-1 ; i<_shmDevicesArea->nDevices ; i++) {
+	for (i=0,devToInitFound=-1 ; i<_shmDevicesArea->nDevices ; i++) {
 		if (_shmDevicesArea->d[i].enable > 0 &&  _shmDevicesArea->d[i].snmpConfigured == 0) {
 			_shmDevicesArea->d[i].snmpConfigured = 1 ; // mark as  'in configuration process' 
-			uninitDevFound = i;
+			devToInitFound = i;
 			break;
 			}
 		}
 	pthread_mutex_unlock (& (_shmDevicesArea->lock));
 
-	if (uninitDevFound > -1)	{ // device requires SNMP initialization 
+	if (devToInitFound > -1)	{ // device requires SNMP initialization 
 
 		if (_verbose > 1) {
-			printf("\n Worker %i initializing SNMP for device (%s, %s)", getpid(), _shmDevicesArea->d[uninitDevFound].name, _shmDevicesArea->d[uninitDevFound].ip);
+			printf("\n Worker %i initializing SNMP for device (%s, %s)", getpid(), _shmDevicesArea->d[devToInitFound].name, _shmDevicesArea->d[devToInitFound].ip);
 			fflush(stdout);
 			}
 
-		if ( snmpCheckParameters( &(_shmDevicesArea->d[uninitDevFound]), _shmInterfacesArea )																										 == 1 ) {    // OK!
+		if ( snmpCheckParameters( &(_shmDevicesArea->d[devToInitFound]), _shmInterfacesArea )																										 == 1 ) {    // OK!
 			pthread_mutex_lock (& (_shmDevicesArea->lock));
-			_shmDevicesArea->d[uninitDevFound].snmpConfigured = 2 ; // mark as  'configured' 
+			_shmDevicesArea->d[devToInitFound].snmpConfigured = 2 ; // mark as  'configured' 
 			pthread_mutex_unlock (& (_shmDevicesArea->lock));
+			if (_verbose > 1) 
+				printf("\n Worker %i:  device (%s, %s) snmpCheckParameters OK!", getpid(), _shmDevicesArea->d[devToInitFound].name, _shmDevicesArea->d[devToInitFound].ip);
 			}
 		else  {
 			pthread_mutex_lock (& (_shmDevicesArea->lock));
-			_shmDevicesArea->d[uninitDevFound].snmpConfigured = 3 ; // mark as 'ERROR' 
+			_shmDevicesArea->d[devToInitFound].snmpConfigured = 3 ; // mark as 'ERROR' 
 			pthread_mutex_unlock (& (_shmDevicesArea->lock));
-			printf("\n Worker %i:  device (%s, %s) snmpCheckParameters ERROR!", getpid(), _shmDevicesArea->d[uninitDevFound].name, _shmDevicesArea->d[uninitDevFound].ip);
+			printf("\n Worker %i:  device (%s, %s) snmpCheckParameters ERROR!", getpid(), _shmDevicesArea->d[devToInitFound].name, _shmDevicesArea->d[devToInitFound].ip);
 			fflush(stdout);				
 			}
 		}
 	else {   // all devices configured, we can now get traffic counters
 
+		pthread_mutex_lock (& (_shmDevicesArea->lock));
+		t = time(NULL);
+		for (i=0,devToMeasureFound=-1 ; i<_shmDevicesArea->nDevices ; i++) {
+			if (_shmDevicesArea->d[i].enable > 0 &&  _shmDevicesArea->d[i].snmpConfigured == 2 && _shmDevicesArea->d[i].snmpCaptured == 0) {
+				if ( t >= (_shmDevicesArea->d[i].lastRead + _sample_period)) {
+					_shmDevicesArea->d[i].snmpCaptured = 1 ; // mark as  'in data gathering process' 
+					devToMeasureFound = i;
+					break;
+					}
+				}
+			}
+		pthread_mutex_unlock (& (_shmDevicesArea->lock));
 
+		if (devToMeasureFound > -1)	{ // device requires SNMP monitoring (data gathering) 
+
+			_shmDevicesArea->d[devToMeasureFound].lastRead = t;
+
+			if (_verbose > 1) {
+				printf("\n Worker %i collecting info via SNMP from device (%s, %s)", getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip);
+				fflush(stdout);
+				}
+
+			for (iface = 0 ; iface < _shmInterfacesArea->nInterfaces ; iface++)   {
+				if (_shmInterfacesArea->d[iface].enable > 0 && _shmDevicesArea->d[devToMeasureFound].deviceId == _shmInterfacesArea->d[iface].deviceId) {
+					snmpCollectBWInfo( &(_shmDevicesArea->d[devToMeasureFound]), &(_shmInterfacesArea->d[iface]));
+		
+					if (_to_files)
+    					saveToFile( &(_shmInterfacesArea->d[iface]) );
+
+					}
+				pthread_mutex_lock (& (_shmDevicesArea->lock));
+				_shmDevicesArea->d[devToMeasureFound].snmpCaptured = 0 ; // return to 0 to next capture
+				pthread_mutex_unlock (& (_shmDevicesArea->lock));					
+				}    
+			}
 		}
 
 

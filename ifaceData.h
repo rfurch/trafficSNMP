@@ -151,7 +151,7 @@ typedef struct deviceData
   char 			      hostname[MAXBUF];
   char 			      ena_prompt[MAXBUF];
   char 			      dis_prompt[MAXBUF];
-  struct timeb		last_access;
+  time_t      		lastRead;
   time_t          lastPingOK;
   time_t          lastSNMPOK;
   int 			      nInterfaces;
@@ -290,7 +290,7 @@ int snmpVerifyIfXTable (deviceData *d, unsigned long long int *inCounter );
 int 	snmpCheckParameters( deviceData *d, interfacesShm *shmInt );
 
 int snmp_disconnect( deviceData *d, int infd, int outfd );
-int snmp_parse_bw( deviceData *d, interfaceData *iface);
+int snmpCollectBWInfo( deviceData *d, interfaceData *iface);
 int snmp_process( deviceData *d, int infd, int outfd, pid_t child_pid, int dev_id, int iface );
 
 //------------------------------------------------------------------------

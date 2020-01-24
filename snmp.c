@@ -45,7 +45,7 @@ char           *end_name = NULL;
 // version, etc
 
 int 	snmpCheckParameters( deviceData *d, interfacesShm *shmInt) {
-int retval = 1;
+int     ret=0, retval = 1;
 
 if ( snmpGetSysDesrc (SNMP_VERSION_2c, "Vostok3KA", d->ip, NULL) == 0 ) {
     strcpy(d->snmpCommunity, "Vostok3KA");
@@ -73,8 +73,8 @@ if ( snmpVerifyIfXTable (d, NULL ) == 0)
     d->use64bitsCounters = 1;
 
 // get interface position in IF-TABLE. In case of error we cannot continue...
-if ( getIndexOfInterfaces( d, shmInt, "1.3.6.1.2.1.2.2.1.2") != 0 ) {
-    printf("\n\n UNABLE to find some Interfaces  !! \n\n" );
+if ( (ret = getIndexOfInterfaces( d, shmInt, "1.3.6.1.2.1.2.2.1.2")) != 0 ) {
+    printf("\n\n UNABLE to find some Interfaces (device *%s, %s) error returned: %i !! \n\n", d->name, d->ip, ret );
     retval = 0;
     }
 
@@ -87,7 +87,7 @@ return (retval);
 // d: device data structure
 // n: index of interface to capture
 
-int snmp_parse_bw( deviceData *d, interfaceData *iface)
+int snmpCollectBWInfo( deviceData *d, interfaceData *iface)
 {
 unsigned long long int  lli1=0, lli2=0;
 struct timeb 			stb;
@@ -292,12 +292,14 @@ int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstO
 
                     // get interface position in IF-TABLE. In case of error we cannot continue...
                     for (iface = 0 ; iface < shmInt->nInterfaces ; iface++)   {
-                        if (strcasecmp(shmInt->d[iface].name, (char *)(vars->val.string)) == 0) {
-                            if ( _verbose > 1)            
-                                printf("\n --- FOUND:  |%s|%s| \n" , vars->val.string, mybuff);
-                            strcpy(shmInt->d[iface].oidIndex, strrchr(mybuff, '.') + 1);
-                            ifaceFound++;
-                            }
+                        if (shmInt->d[iface].enable > 0 && d->deviceId == shmInt->d[iface].deviceId) {
+                            if (strcasecmp(shmInt->d[iface].name, (char *)(vars->val.string)) == 0) {
+                                if ( _verbose > 1)            
+                                    printf("\n --- FOUND:  |%s|%s| \n" , vars->val.string, mybuff);
+                                strcpy(shmInt->d[iface].oidIndex, strrchr(mybuff, '.') + 1);
+                                ifaceFound++;
+                                }
+                            }    
                         }    
                     if (ifaceFound == d->nInterfaces) {  // all interfaces found    
                         if ( _verbose > 1)            
@@ -416,7 +418,7 @@ int getIndexOfInterface(long snmpVersion, char *interfaceName, char *walkFirstOI
     end_oid[end_len-1]++;
 
     //init_snmp("myprog");
-    //snmp_sess_init( &session );
+    snmp_sess_init( &session );
     session.version = snmpVersion;
 
     session.community = (unsigned char *)strdup(community);
@@ -563,7 +565,7 @@ int getInOutCounters (long snmpVersion, char *community, char *ipAddress, char *
     names[current_name++] = outCounterOid;
     
     //init_snmp("myprog");
-    //snmp_sess_init( &session );
+    snmp_sess_init( &session );
     session.version = snmpVersion;
 
     session.community = (unsigned char *)strdup(community);
