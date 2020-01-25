@@ -33,7 +33,7 @@ all: $(binaries)
 
 $(binaries): $(obj)
 	$(CC) -Wall -o $@ $^ $(LDFLAGS)
-#	/usr/bin/sudo /sbin/setcap cap_net_raw=pe $@
+	/usr/bin/sudo /sbin/setcap cap_net_raw=pe $@
 .c:
 	$(CC) $(CFLAGS) $(CPPFLAGS) -fPIC -c -o $@ $<
 

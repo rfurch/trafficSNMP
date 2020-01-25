@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "*.tcc": "cpp",
-        "type_traits": "cpp"
+        "type_traits": "cpp",
+        "ip_icmp.h": "c"
     }
 }

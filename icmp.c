@@ -80,7 +80,7 @@ int ping(char *address)
     }
 
     if (sd < 0) {
-        perror("socket");
+        perror("socket error");
         return 1;
     }
 

@@ -35,14 +35,16 @@
 #include <math.h>
 #include <mysql/mysql.h>
 
+#include <sys/mman.h> 
+
 #include <sys/timeb.h>
 #include <getopt.h>
 
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 
-
 #include "ifaceData.h"                                                                                                     
+#include "shm_q.h"
 
 int             _verbose=0;
 
@@ -65,13 +67,13 @@ int				_speech_prio=8;		// minimum priority value to trigger speech messages
 
 MYSQL       	*_mysql_connection_handler=NULL;
 
-devicesShm 		*_shmDevicesArea=NULL; 
-interfacesShm	*_shmInterfacesArea=NULL; 
+devicesShm 		*_shmDevicesArea = NULL; 
+interfacesShm	*_shmInterfacesArea = NULL; 
+void 			*_queue = NULL;	
 
 int 			_useSNMP = 0;
 
 int 			_maxRandomStartDelay = 30;
-
 
 //------------------------------------------------------------------------                                   
 //------------------------------------------------------------------------
@@ -92,16 +94,17 @@ printf ("============================================================\n");
 printf ("Trend file generator\n\n");
 printf ("USAGE: %s [options]\n", prgname);
 printf ("Options:\n");
+printf ("  -h, --help   Print this help \n");
 printf ("  -v   Verbose mode\n");
 printf ("  -e   send data to epics (deactivated by default) \n");
-printf ("  -h   send data to historic DB  (deactivated by default) \n");
+printf ("  -H   send data to historic DB  (deactivated by default) \n");
 printf ("  -m   send data to MEMORY DB  (deactivated by default) \n");
 printf ("  -M   Maximum start delay (default 30 sec) (Prevents DB hangs) \n");
 printf ("  -f   send data to FILES  (deactivated by default) \n");
 printf ("  -a   send alarms  (deactivated by default) \n");
 printf ("  -d   database server  (default dbserver01) \n");
 printf ("  -s   sample period (default 30 seconds) \n");
-printf ("  -S   try to capture values via SNMP (Overrides devices table parameter!) \n");
+printf ("  -S, --snmp  try to capture values via SNMP (Overrides devices table parameter!) \n");
 printf ("  -r   reconnect period (default 10 minutes) \n");
 printf ("  -p   minimum priority to trigger voice messages (default=8) \n");
 printf ("  -w   concurrent workers (default=%i) \n", MAX_WORKERS);
@@ -215,107 +218,20 @@ return(1);
 
 //------------------------------------------------------------------------
 
-// this process send commands to his child, then receive and proceses answers
-int   processParent( deviceData *d, int infd, int outfd, pid_t child_pid, int dev_id )
-{
-int 				end=0;
-int 				iface=0;
-static time_t		old_time=0, old_db_time=0;
-time_t				current_time=0;
-int 				comm_error=0;
-
-old_time = current_time = time(NULL);
-if (d->authenticate && d->authenticate(d, infd, outfd))
-  {
-  if (_verbose > 2)	
-	printf("\n Device hostname: |%s| \n",d->hostname); 
-
-  while (!end)
-    {
-	// check UP to 3 pings to device!
-
-//	if ( ping(d->ip) == 0 || ping(d->ip)==0 || ping(d->ip)==0 )  {
-//		printf("\n device %s (%s) OK via ICMP. ", d->ip, d->name);
-  //      update_devices_mem_ping_time(d->dev_id);
-	//	}
-	//else 
-	//	printf("\n device %s (%s) UNREACHABLE via ICMP. ", d->ip, d->name);
-	//fflush(stdout); 
-	  
-    for (iface=0 ; iface<d->nInterfaces ; iface++)
-  	  {
-	  if (d->ifs[iface].enable > 0 && !comm_error)
-		{
-		if (d->process) {  
-		    d->process(d, infd, outfd, child_pid, dev_id, iface);
-		 
-		 /*   if ( fabs(d->ifs[iface].ibw - ((shm_area *)_shmArea)->ibw) > 5 ) {
-				((shm_area *)_shmArea)->ibwPrev = ((shm_area *)_shmArea)->ibw; 
-				((shm_area *)_shmArea)->ibw = d->ifs[iface].ibw;
-				((shm_area *)_shmArea)->lastUpdate = time(NULL);
-				}
-		    if ( fabs(d->ifs[iface].obw - ((shm_area *)_shmArea)->obw) > 5 ) {
-				((shm_area *)_shmArea)->obwPrev = ((shm_area *)_shmArea)->obw; 
-				((shm_area *)_shmArea)->obw = d->ifs[iface].obw;
-				((shm_area *)_shmArea)->lastUpdate = time(NULL);
-				} */
-		    }
-		}	
-	  }	
-	
-	if (d->ncycle > 0 && !comm_error)     
-	  {
-	  //if (_to_files)
-    //	saveToFile( d );
-
-	  if (_to_memdb)
-  		to_db_mem ( d );
-
-	  if (_to_hisdb)
-		to_db_hist ( d );
-	  }	
-
-    if (d->ncycle < 1000)  // for start condition
-		d->ncycle++;
-
-    // preventive disconnection, just in case  
-    if ( ((current_time = time(NULL)) > (old_time + (_reconnect_period * 60))) || comm_error )
-  	  {
-  	  old_time = current_time;
-	  //dbread (d, dev_id);
-
-  	  sleep (9);
-  	  }   
-    else  
-  	  sleep(_sample_period);  
-
-
-    // preventive disconnection from DB
-    if ( ((current_time = time(NULL)) > (old_db_time + 300)) || comm_error )
-  	  {
-  	  old_db_time = current_time;
-	  db_disconnect();
-	  db_connect();
-	  }
-
-	db_keepalive(_process_name);
-  	}
-  	
-  }
-
-kill(child_pid, SIGINT);          
-return(1);
-}
-
-//------------------------------------------------------------------------
-
 // basic program argument parsing
 
 int parseArguments(int argc, char *argv[]) {
 
 int     		opt=0;
+int			 	help_flag = 0;
 
-while ((opt = getopt(argc, argv, "M:s:d:r:w:ehfmvaS")) != -1)
+struct option longopts[] = {
+	{ "help", no_argument, &help_flag, 1 },
+	{ "snmp", optional_argument, NULL, 'S' },
+	{ 0 }
+};
+
+while ((opt = getopt_long(argc, argv, "M:s:d:r:w:ehfmvaS", longopts, 0)) != -1)
     {
     switch (opt)
         {
@@ -339,7 +255,7 @@ while ((opt = getopt(argc, argv, "M:s:d:r:w:ehfmvaS")) != -1)
             _to_memdb=1;
         break;
 
-        case 'h':
+        case 'H':
             _to_hisdb=1;
         break;
 
@@ -376,15 +292,18 @@ while ((opt = getopt(argc, argv, "M:s:d:r:w:ehfmvaS")) != -1)
         	strcpy(_server, optarg);
         break;
 
-
+		case 'h':
         default: /* ’?’ */
             printUsage(argv[0]);
             exit(EXIT_FAILURE);
         }
     }
 
-if ( _to_epics==0 && _to_files==0 && _to_memdb==0 && _to_hisdb==0 )
+if ( _to_epics==0 && _to_files==0 && _to_memdb==0 && _to_hisdb==0 ) {
   printf("\n\n ATENTION:   collected data will not be recorded to DB, MEM, FILE, etc!  \n\n");
+  printUsage(argv[0]);
+  exit(0);
+  } 
 
 sprintf(_process_name, "trafficSNMP");
 
@@ -395,7 +314,13 @@ return 1;
 
 void mainLoop()  {
 
-int i=0; 
+int 				i=0; 
+interfaceData		ifaceData;
+static time_t		old_db_time=0;
+time_t				current_time=0;
+int 				comm_error=0;
+
+old_db_time = current_time = time(NULL);
 
 while(1) {
 
@@ -404,10 +329,20 @@ while(1) {
 		for (i=0 ; i<_shmDevicesArea->nDevices ; i++)
 			printf("\n            device %i snmpConfigured: %i snmpCaptured: %i ", _shmDevicesArea->d[i].deviceId, _shmDevicesArea->d[i].snmpConfigured, _shmDevicesArea->d[i].snmpCaptured);
 	
+	while (shmQueueGet(_queue, &ifaceData) == 1) {
+		to_db_mem (&ifaceData);
+
+		}
+
+    // preventive disconnection from DB
+    if ( ((current_time = time(NULL)) > (old_db_time + 300)) || comm_error ) {
+  	  old_db_time = current_time;
+	  db_disconnect();
+	  db_connect();
+	  }
 
 	fflush(stdout);
-	sleep (5);
-
+	sleep (1);
 	}
 }
 
@@ -420,6 +355,8 @@ int 	i=0, iface=0;
 int 	devToInitFound=0;
 int 	devToMeasureFound=0;
 time_t	t=0;
+
+sleep(rand()%20);  
 
 if (_verbose > 1) {
 	printf("\n Worker %i start!", getpid());
@@ -480,26 +417,40 @@ while (1) {
 
 			_shmDevicesArea->d[devToMeasureFound].lastRead = t;
 
-			if (_verbose > 1) {
-				printf("\n Worker %i collecting info via SNMP from device (%s, %s)", getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip);
-				fflush(stdout);
-				}
-
-			for (iface = 0 ; iface < _shmInterfacesArea->nInterfaces ; iface++)   {
-				if (_shmInterfacesArea->d[iface].enable > 0 && _shmDevicesArea->d[devToMeasureFound].deviceId == _shmInterfacesArea->d[iface].deviceId) {
-					snmpCollectBWInfo( &(_shmDevicesArea->d[devToMeasureFound]), &(_shmInterfacesArea->d[iface]));
-		
-					if (_to_files)
-    					saveToFile( &(_shmInterfacesArea->d[iface]) );
-
+			if ( ping(_shmDevicesArea->d[devToMeasureFound].ip)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip)==0 ) {
+			
+				if (_verbose > 1) {
+					printf("\n Worker %i collecting info via SNMP from device (%s, %s)", getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip);
+					fflush(stdout);
 					}
+
+				_shmDevicesArea->d[devToMeasureFound].lastPingOK = time(NULL);
+				
+				for (iface = 0 ; iface < _shmInterfacesArea->nInterfaces ; iface++)   {
+					if (_shmInterfacesArea->d[iface].enable > 0 && _shmDevicesArea->d[devToMeasureFound].deviceId == _shmInterfacesArea->d[iface].deviceId) {
+						snmpCollectBWInfo( &(_shmDevicesArea->d[devToMeasureFound]), &(_shmInterfacesArea->d[iface]));
+
+						// sending to files a DB we need to be sure there are traffic measurements		
+						if (_to_files && _shmInterfacesArea->d[iface].obytes_prev>0 && _shmInterfacesArea->d[iface].ibytes_prev>0)
+							saveToFile( &(_shmInterfacesArea->d[iface]) );
+
+						if (_to_memdb && _shmInterfacesArea->d[iface].obytes_prev>0 && _shmInterfacesArea->d[iface].ibytes_prev>0)
+							shmQueuePut(_queue, (void *)&(_shmInterfacesArea->d[iface]));	
+
+						}
+					}	
 				pthread_mutex_lock (& (_shmDevicesArea->lock));
 				_shmDevicesArea->d[devToMeasureFound].snmpCaptured = 0 ; // return to 0 to next capture
-				pthread_mutex_unlock (& (_shmDevicesArea->lock));					
-				}    
+				pthread_mutex_unlock (& (_shmDevicesArea->lock));							
+				}
+			else {	
+				if (_verbose > 1) {
+					printf("\n Worker %i device (%s, %s) NOT reachable via ICMP: No data collection...", getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip);
+					fflush(stdout);
+					}
+				}
 			}
 		}
-
 
 	sleep (1);
 	}
@@ -539,6 +490,12 @@ return 1;
 int shmInit() {
 
 pthread_mutexattr_t mattr, ifaceAttr;
+
+// create shared memory queue  to exchange data between workers and main process  
+if ( shmQueueInit(&_queue, sizeof(interfaceData), MAX_SHM_QUEUE_SIZE) != 1 )   {
+    printf("\n\n ATENTION:   shmArea for QUEUE ERROR !  \n\n");
+    exit(EXIT_FAILURE);
+    } 
 
 // we create shared memory area for devices
 if ( (_shmDevicesArea = (devicesShm *) create_shared_memory(sizeof(devicesShm))) == NULL )  {

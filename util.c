@@ -562,6 +562,7 @@ void* create_shared_memory(size_t size) {
 
     // The remaining parameters to `mmap()` are not important for this use case, 
     // but the manpage for `mmap` explains their purpose. 
-    return mmap(NULL, size, protection, visibility, 0, 0); 
+//    return mmap(NULL, size, protection, visibility, 0, 0); 
+    return mmap(NULL, size, protection, visibility, -1, 0); 
 } 
 //-------------------------------------------------------------------

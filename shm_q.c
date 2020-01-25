@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <sys/time.h>
@@ -22,127 +23,132 @@
 #include <sys/shm.h>
 #include <stdio.h>
 #include <sys/timeb.h>
+#include <bits/mman-linux.h>
 
 #include "shm_q.h"
-
 
 //------------------------------------------------------------------------                                   V'
 //------------------------------------------------------------------------
 
-int q_init(shm_queue **s, int key, int *id)
+// initialize Shared mameory area and mutex lock. 
+
+int shmQueueInit(void **queue, int elementSize, int maxElements)
 {
-int 		shmid=0;
-char 		*sshm=NULL;	
-long int 	s_size=0;
+shmQueueHeader        *q=NULL;  // points to 'queue' but it has well known type / size for internal handling
+pthread_mutexattr_t   mattr;
 
-s_size= (((int)(((float) sizeof(shm_queue)) / ((float)getpagesize()))) + 1) * getpagesize(); 
+// Our memory buffer will be readable and writable: 
+int protection = PROT_READ | PROT_WRITE; 
 
-if (_verbose > 2)
-  {
-  printf("\n requiered space: %li Allocated Size: %li. PAGE_SIZE: %i  \n", sizeof(shm_queue), s_size, getpagesize() ); 
-  printf("\n sizoef data: %li ", sizeof(shm_data));
-  fflush(stdout);  
-  }
-  
-//if ((shmid = shmget(key, sizeof(shm_queue), IPC_CREAT | 0666)) < 0) 
-if ((shmid = shmget(key, s_size, IPC_CREAT | 0666)) < 0) 
-  {
-  perror("shmget");
-  exit(1);
-  }
+// The buffer will be shared (meaning other processes can access it), but 
+// anonymous (meaning third-party processes cannot obtain an address for it), 
+// so only this process and its children will be able to use it: 
+int visibility = MAP_ANONYMOUS | MAP_SHARED; 
 
-if (_verbose > 2)
-  printf("\n SHM ID: %i \n ", shmid);
-fflush(stdout);  
+// queue size: header + elements/data
+size_t  qSize = sizeof(shmQueueHeader) + elementSize * maxElements;
 
-if ((sshm = shmat(shmid, NULL, 0)) == (char *) -1) 
-  {
-  perror("shmat");
-  exit(1);
-  }
-  
-*id=shmid;
-*s = (shm_queue *) sshm;
-(*s)->n = (*s)->head = (*s)->tail = 0;
+if ( (elementSize * maxElements) < 1 )
+  return(-1);
 
-if (sem_init(&((*s)->sem), 1, 1) < 0) 
-  {
-  perror("semaphore initialization");
-  exit(1);
-  }
+// we create shared memory area for devices
+// The remaining parameters to `mmap()` are not important for this use case, 
+// but the manpage for `mmap` explains their purpose. 
+//    return mmap(NULL, size, protection, visibility, 0, 0); 
+if ( ((*queue) = (void *) mmap(NULL, qSize, protection, visibility, -1, 0)) == NULL )  {
+    printf("\n\n ATENTION:   create_shared_memory ERROR on Shared Memory Queue!  \n\n");
+    return (-2);
+    }     
+
+q = (shmQueueHeader *) (*queue);
+// reset shm memory
+memset(q, 0, sizeof(shmQueueHeader) + elementSize * maxElements);
+
+q->elementSize = elementSize;
+q->maxElements = maxElements;
+
+// intialize mutex lock to assure mutual exclusion to shm area
+pthread_mutexattr_init( &mattr );
+pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_ERRORCHECK_NP);
+pthread_mutexattr_setpshared(&mattr, PTHREAD_PROCESS_SHARED);
+
+pthread_mutex_init(& (q->lock), &mattr);
 
 return(1);
 }
 
 //------------------------------------------------------------------------
 
-int q_put(shm_queue *s, shm_data *d)
+int shmQueuePut(void *queue, void *data)
 {
-int 	ok=0;  // error!
-int 	pn=0, ph=0, pt=0;
-	
-// just ins case!
-if (!d)
-  {
-  fprintf(stderr, "\n q_put error:  NULL Destination (d) ");
-  return(0);
-  } 
+int 	                retVal=0;  // error!
+shmQueueHeader        *q=NULL;  // points to 'queue' but it has well known type / size for internal handling
 
-sem_wait(&(s->sem));
-if (s->n < (SHMQ_MAX))	// is there any space?
-  {
-  memmove(&(s->data[s->head]), d, sizeof(shm_data));
+// just in case!
+if (!queue)  {
+    fprintf(stderr, "\n q_put error:  NULL Destination (d) ");
+    return(0);
+    } 
 
-  pn=s->n; ph=s->head; pt=s->tail;  
-  // check if head returns to 0 (circular buffer!)
-  (s->head) =  ( s->head < (SHMQ_MAX - 1)) ? (s->head)+1 : 0;
-  (s->n)++;  
+q = (shmQueueHeader *) queue;
+pthread_mutex_lock (& (q->lock));
 
+if (q->n < (q->maxElements))	{ // is there any space?
+    memmove( queue + sizeof(shmQueueHeader) + (q->elementSize * q->n), data, q->elementSize);
+    
+    // check if head returns to 0 (circular buffer!)
+    (q->head) =  ( q->head < (q->n - 1)) ? (q->head)+1 : 0;
+    (q->n)++;  
 
-  if (_verbose > 4)
-	{ printf(" | n: %i->%i head: %i->%i tail:  %i->%i ", pn, s->n, ph, s->head, pt, s->tail); fflush(stdout); }
+    if (_verbose > 4)  { 
+      printf("   *** QUEUE *** n: %i head: %i tail: %i ", q->n, q->head, q->tail); 
+      fflush(stdout); 
+      }
 
-  ok=1;  	  
+    retVal=1;  	  
   }
 else
   fprintf(stderr, "\n ERROR:  SHMQ FULL! ");
   
-sem_post(&(s->sem));
-return(ok); 
+pthread_mutex_unlock (& (q->lock));
+
+return(retVal); 
 } 
 
 //------------------------------------------------------------------------
 
-int q_get(shm_queue *s, shm_data *d)
+int shmQueueGet(void *queue, void *data)
 {
-int 	ok=0;  // error!
-int 	pn=0, ph=0, pt=0;
+int 	                retVal=0;  // error!
+shmQueueHeader        *q=NULL;  // points to 'queue' but it has well known type / size for internal handling
 
 // just in case!
-if (!d)
-  {
-  fprintf(stderr, "\n q_put error:  NULL Destination (d) ");
-  return(0);
-  } 
+if (!queue)  {
+    fprintf(stderr, "\n q_put error:  NULL Destination (d) ");
+    return(0);
+    } 
 
-sem_wait(&(s->sem));
-if (s->n > 0)	// are there any elements in queue?
+q = (shmQueueHeader *) queue;
+pthread_mutex_lock (& (q->lock));
+
+if (q->n > 0)	// are there any elements in queue?
   {
-  memmove(d, &(s->data[s->tail]), sizeof(shm_data));
+  memmove(data, queue + sizeof(shmQueueHeader) + (q->elementSize * q->n), q->elementSize);
   
-  pn=s->n; ph=s->head; pt=s->tail;  
   // check if tail returns to 0 (circular buffer!)
-  (s->tail) =  ( s->tail < (SHMQ_MAX - 1)) ? (s->tail)+1 : 0;
-  (s->n)--;  
+  (q->tail) =  ( q->tail < (q->n - 1)) ? (q->tail)+1 : 0;
+  (q->n)--;  
 
-  if (_verbose > 4)
-	{ printf(" | n: %i->%i head: %i->%i tail:  %i->%i |  ", pn, s->n, ph, s->head, pt, s->tail); fflush(stdout); }
+  if (_verbose > 4)  { 
+    printf("   *** QUEUE *** n: %i head: %i tail: %i ", q->n, q->head, q->tail); 
+    fflush(stdout); 
+    }
 
-  ok=1;  	  
+  retVal=1;  	  
   }
   
-sem_post(&(s->sem));
-return(ok); 
+pthread_mutex_unlock (& (q->lock));
+return(retVal); 
 } 
 
 //------------------------------------------------------------------------

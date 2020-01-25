@@ -335,16 +335,13 @@ return(0);
 
 // send instant data to MEMORY DB
 
-int to_db_mem (deviceData *d)
+int to_db_mem (interfaceData *d)
 {
 char        querystring[3000];
-int 		i=0;
 
 db_connect();
 
-for (i=0 ; i<d->nInterfaces ; i++)
-  {
-  if (d->ifs[i].enable > 0)
+  if (d->enable > 0)
 	{
 	sprintf(querystring, "INSERT INTO topology.devices_bw_mem ( devid, ifid, ifalias, tdate, \
 				tstamp, ibytes, obytes, ibw, obw, ibw_a, obw_a, ibw_b, obw_b, ibw_c, obw_c) \
@@ -352,12 +349,12 @@ for (i=0 ; i<d->nInterfaces ; i++)
 				ON DUPLICATE KEY UPDATE devid=%i, ifid=%i, ifalias='%s', tdate=NOW(), \
 				tstamp=NOW(), ibytes=%lli, obytes=%lli, ibw=%.2lf, obw=%.2lf, ibw_a=%.2lf, obw_a=%.2lf, \
 				 ibw_b=%.2lf, obw_b=%.2lf, ibw_c=%.2lf, obw_c=%.2lf; ", 
-                d->deviceId, d->ifs[i].interfaceId, d->ifs[i].description, d->ifs[i].ibytes, d->ifs[i].obytes, 
-				d->ifs[i].ibw/1000, d->ifs[i].obw/1000, d->ifs[i].ibw_a/1000, d->ifs[i].obw_a/1000, 
-				d->ifs[i].ibw_b/1000, d->ifs[i].obw_b/1000, d->ifs[i].ibw_c/1000, d->ifs[i].obw_c/1000, 
-                d->deviceId, d->ifs[i].interfaceId, d->ifs[i].description, d->ifs[i].ibytes, d->ifs[i].obytes, 
-				d->ifs[i].ibw/1000, d->ifs[i].obw/1000, d->ifs[i].ibw_a/1000, d->ifs[i].obw_a/1000, 
-				d->ifs[i].ibw_b/1000, d->ifs[i].obw_b/1000, d->ifs[i].ibw_c/1000, d->ifs[i].obw_c/1000);
+                d->deviceId, d->interfaceId, d->description, d->ibytes, d->obytes, 
+				d->ibw/1000, d->obw/1000, d->ibw_a/1000, d->obw_a/1000, 
+				d->ibw_b/1000, d->obw_b/1000, d->ibw_c/1000, d->obw_c/1000, 
+                d->deviceId, d->interfaceId, d->description, d->ibytes, d->obytes, 
+				d->ibw/1000, d->obw/1000, d->ibw_a/1000, d->obw_a/1000, 
+				d->ibw_b/1000, d->obw_b/1000, d->ibw_c/1000, d->obw_c/1000);
 
 
 	if (_verbose > 3)
@@ -365,7 +362,7 @@ for (i=0 ; i<d->nInterfaces ; i++)
 
     mysql_query(_mysql_connection_handler, querystring);
 	}
-  }   
+
 return(0);
 }
 

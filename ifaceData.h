@@ -10,8 +10,9 @@
 #define			MAXBUF				200
 #define			MAXAVGBUF			10
 
-#define     MAX_DEVICES       10000
-#define     MAX_INTERFACES    30000
+#define     MAX_DEVICES         10000
+#define     MAX_INTERFACES      30000
+#define     MAX_SHM_QUEUE_SIZE  2000
 
 #define     MAX_WORKERS       5
 
@@ -167,7 +168,6 @@ typedef struct deviceData
   int             use64bitsCounters;
   int             snmpConfigured;   // 0: no   1: in process  2: OK 3: ERROR
   int             snmpCaptured;     // 0: no   1: in process  2: OK 3: ERROR
-  
 
   netsnmp_session         session, *ss;
   netsnmp_pdu             *pdu;
@@ -261,7 +261,7 @@ void* create_shared_memory(size_t size);
 // db.c
 int db_connect();
 int db_disconnect();
-int to_db_mem (deviceData *d);
+int to_db_mem (interfaceData *d);
 int dbread (devicesShm *shmDev, interfacesShm *shmInt);
 int to_db_hist (deviceData *d);
 int delete_from_db_mem ();
