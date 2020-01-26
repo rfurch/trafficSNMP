@@ -140,11 +140,11 @@ else
   double auxout=0;
 
   auxin = (8*(double)(iface->ibytes - iface->ibytes_prev)) / delta_t;
-  if (auxin < (((long long int)10) * 1000 * 1000 * 1000))  // < 10Gbps 
+  if (auxin < (((long long int)200) * 1000 * 1000 * 1000))  // < 200Gbps 
 	iface->ibw =  auxin;
   
   auxout = (8*(double)(iface->obytes - iface->obytes_prev)) / delta_t;
-  if (auxout < (((long long int)10) * 1000 * 1000 * 1000))  // < 10Gbps 
+  if (auxout < (((long long int)200) * 1000 * 1000 * 1000))  // < 200Gbps 
 	iface->obw =  auxout;  
 
   if ( iface->ibytes_prev_prev == 0 ) // second pass after starting the program, it's a good idea to use current 'instant' traffic as average!
@@ -183,7 +183,8 @@ if (d->ncycle > 10)  // alarms only after startup window
   if (_send_alarm)
 	evalAlarm(d, iface);
   
-if (_verbose > 1)
+//if (_verbose > 1 || iface->interfaceId==13)
+if (_verbose > 1 )
   {
   printf("\n\n --------------------------- ");
   printf("\n interface: %s  (%s)", iface->name, iface->description);

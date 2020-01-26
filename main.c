@@ -172,6 +172,70 @@ return(1);
 
 //------------------------------------------------------------------------
 
+//
+// This routine gets las line of traffic to avoid discrepancies 
+// after restarting the process 
+
+int retriveBWDataFromFile(  )
+{
+FILE       	 	*f=NULL;
+char       		 	fname[500];
+char 				c=0;
+//char 				line[2000] = "";
+//char 				*ret=NULL;
+int 				i=0, j=0;
+interfaceData 		*ifs = NULL;
+
+
+for (j=0 ; j<_shmInterfacesArea->nInterfaces ; j++) {
+	
+	ifs = &(_shmInterfacesArea->d[j]);
+	if (_verbose > 3)
+		{printf("\n\n Retrieving LAST line of file:  %s", ifs->file_var_name); fflush(stdout); }
+
+	if ( strlen(ifs->file_var_name) > 0 ) {
+		sprintf(fname, "/data/bw/%s", ifs->file_var_name);
+		if  ( (f = fopen(fname, "r")) != NULL )  {
+			fseek(f, -4, SEEK_END);  // go to the end
+
+			c = fgetc(f);
+			while(c != '\n' && c != '\r' ) {
+				fseek(f, -2, SEEK_CUR);
+				c = fgetc(f);
+				}
+
+			//fseek(f, 1, SEEK_CUR);
+			//ret = fgets(line, 1000, f);
+			//printf("\n ---%s---", line);
+
+			i = fscanf(f, "%*i.%*i,%*i.%*i,%*i,%*i,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf[^\n]",
+					&(ifs->ibw), &(ifs->obw), &(ifs->ibw_a), &(ifs->obw_a),
+					&(ifs->ibw_b), &(ifs->obw_b), &(ifs->ibw_c), &(ifs->obw_c)
+					);
+			i=i;
+			ifs->ibw *= 1000;
+			ifs->obw *= 1000;
+			ifs->ibw_a *= 1000;
+			ifs->obw_a *= 1000;
+			ifs->ibw_b *= 1000;
+			ifs->obw_b *= 1000; 
+			ifs->ibw_c *= 1000;
+			ifs->obw_c *= 1000;
+			
+			//printf ("\n -- %lf %lf %lf %lf", ifs->ibw,ifs->obw, ifs->ibw_c ,ifs->obw_c);
+			//fflush(stdout);	
+
+			fclose(f);
+			}
+		}
+	}
+	
+return(1);
+}    
+
+
+//------------------------------------------------------------------------
+
 int saveToFile( interfaceData *ifs )
 {
 FILE        *f=NULL;
@@ -183,34 +247,32 @@ double      incalc=0, outcalc=0;
 if (_verbose > 3)
 	printf("\n\n Saving data to file:");
 
-if (ifs->ibytes_prev > 0 && ifs->obytes_prev > 0 ) {
-	if ( strlen(ifs->file_var_name) > 0 ) {
-		sprintf(fname, "/data/bw/%s", ifs->file_var_name);
-		if  ( (f = fopen(fname, "a")) != NULL )  {
-			localtime_r(&(ifs->last_access.time), &stm);
+if ( strlen(ifs->file_var_name) > 0 ) {
+	sprintf(fname, "/data/bw/%s", ifs->file_var_name);
+	if  ( (f = fopen(fname, "a")) != NULL )  {
+		localtime_r(&(ifs->last_access.time), &stm);
 
-			if (! avg_basic((ifs->ibw_buf), 0, (MAXAVGBUF-1), &inavg) )
-				inavg=0;
+		if (! avg_basic((ifs->ibw_buf), 0, (MAXAVGBUF-1), &inavg) )
+			inavg=0;
 
-			if (! avg_basic((ifs->obw_buf), 0, (MAXAVGBUF-1), &outavg) )
-				outavg=0;
+		if (! avg_basic((ifs->obw_buf), 0, (MAXAVGBUF-1), &outavg) )
+			outavg=0;
 
-			detect_low_traffic_01((ifs->ibw_buf), &incalc);
-			detect_low_traffic_01((ifs->obw_buf), &outcalc);
-			
-			fprintf(f, "%li.%03i,%4i%02i%02i%02i%02i%02i.%03i,%lli,%lli,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%li,%li,%.4lf,%.4lf\r\n",
-					ifs->last_access.time, ifs->last_access.millitm, 
-					stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min, stm.tm_sec, 
-					ifs->last_access.millitm, 
-					ifs->ibytes, ifs->obytes, ifs->ibw/1000, ifs->obw/1000, 
-					ifs->ibw_a/1000, ifs->obw_a/1000,
-					ifs->ibw_b/1000, ifs->obw_b/1000, ifs->ibw_c/1000, ifs->obw_c/1000, 
-					inavg/1000, outavg/1000,
-					ifs->ierrors, ifs->oerrors,
-					incalc, outcalc
-					);
-			fclose(f);
-			}
+		detect_low_traffic_01((ifs->ibw_buf), &incalc);
+		detect_low_traffic_01((ifs->obw_buf), &outcalc);
+		
+		fprintf(f, "%li.%03i,%4i%02i%02i%02i%02i%02i.%03i,%lli,%lli,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%li,%li,%.4lf,%.4lf\r\n",
+				ifs->last_access.time, ifs->last_access.millitm, 
+				stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min, stm.tm_sec, 
+				ifs->last_access.millitm, 
+				ifs->ibytes, ifs->obytes, ifs->ibw/1000, ifs->obw/1000, 
+				ifs->ibw_a/1000, ifs->obw_a/1000,
+				ifs->ibw_b/1000, ifs->obw_b/1000, ifs->ibw_c/1000, ifs->obw_c/1000, 
+				inavg/1000, outavg/1000,
+				ifs->ierrors, ifs->oerrors,
+				incalc, outcalc
+				);
+		fclose(f);
 		}
 	}
 
@@ -442,9 +504,8 @@ while (1) {
 					if (_shmInterfacesArea->d[iface].enable > 0 && _shmDevicesArea->d[devToMeasureFound].deviceId == _shmInterfacesArea->d[iface].deviceId) {
 						snmpCollectBWInfo( &(_shmDevicesArea->d[devToMeasureFound]), &(_shmInterfacesArea->d[iface]));
 
-						// if not first nor second iteration
-						if ( (_shmInterfacesArea->d[iface].obytes_prev>0 || _shmInterfacesArea->d[iface].ibytes_prev>0) &&
-						     (_shmInterfacesArea->d[iface].obytes_prev_prev >0 || _shmInterfacesArea->d[iface].ibytes_prev_prev >0) ) {
+						// if this is not the first iteration
+						if ( (_shmInterfacesArea->d[iface].obytes_prev>0 || _shmInterfacesArea->d[iface].ibytes_prev>0)  ) {
 
 							// sending to files a DB we need to be sure there are traffic measurements		
 							if ( _to_files )
@@ -604,6 +665,9 @@ while (dbread (_shmDevicesArea, _shmInterfacesArea) <= 0)
 
 // reinit in memory database
 delete_from_db_mem ();
+
+// get last values from files
+retriveBWDataFromFile(  );
 
 // fork children
 launchWorkers (_workers); 

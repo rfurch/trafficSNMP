@@ -427,8 +427,9 @@ int                 retval=0;
 
 db_connect();
 
-sprintf(sqlquery, "UPDATE topology.devices_mem SET last_icmp_ok=%li,  last_snmp_ok=%li WHERE id=%i;", d->lastPingOK, d->lastSNMPOK, d->deviceId);
+sprintf(sqlquery, "UPDATE topology.devices_mem SET last_icmp_ok=FROM_UNIXTIME(%li),  last_snmp_ok=FROM_UNIXTIME(%li) WHERE id=%i;", d->lastPingOK, d->lastSNMPOK, d->deviceId);
 mysql_query(_mysql_connection_handler, sqlquery);
+
 return(retval);
 }
 
