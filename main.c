@@ -186,7 +186,6 @@ char 				c=0;
 int 				i=0, j=0;
 interfaceData 		*ifs = NULL;
 
-
 for (j=0 ; j<_shmInterfacesArea->nInterfaces ; j++) {
 	
 	ifs = &(_shmInterfacesArea->d[j]);
@@ -213,15 +212,16 @@ for (j=0 ; j<_shmInterfacesArea->nInterfaces ; j++) {
 					&(ifs->ibw_b), &(ifs->obw_b), &(ifs->ibw_c), &(ifs->obw_c)
 					);
 			i=i;
-			ifs->ibw *= 1000;
-			ifs->obw *= 1000;
-			ifs->ibw_a *= 1000;
-			ifs->obw_a *= 1000;
-			ifs->ibw_b *= 1000;
-			ifs->obw_b *= 1000; 
-			ifs->ibw_c *= 1000;
-			ifs->obw_c *= 1000;
-			
+
+			ifs->ibw = 1000 * ifs->ibw_c ;
+			ifs->obw = 1000 * ifs->obw_c;
+			ifs->ibw_a = 1000 * ifs->ibw_c ;
+			ifs->obw_a = 1000 * ifs->obw_c;
+			ifs->ibw_b = 1000 * ifs->ibw_c ;
+			ifs->obw_b = 1000 * ifs->obw_c;
+			ifs->ibw_c = 1000 * ifs->ibw_c ;
+			ifs->obw_c = 1000 * ifs->obw_c;
+
 			//printf ("\n -- %lf %lf %lf %lf", ifs->ibw,ifs->obw, ifs->ibw_c ,ifs->obw_c);
 			//fflush(stdout);	
 
