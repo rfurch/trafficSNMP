@@ -25,6 +25,8 @@
 #include <arpa/inet.h>
 #include <semaphore.h>
 #include <syslog.h>
+#include <sys/prctl.h>
+
 
 #include <sys/types.h>
 #include <sys/ipc.h>
@@ -69,7 +71,8 @@ MYSQL       	*_mysql_connection_handler=NULL;
 
 devicesShm 		*_shmDevicesArea = NULL; 
 interfacesShm	*_shmInterfacesArea = NULL; 
-void 			*_queue = NULL;	
+void 			*_queueInterfaces = NULL;	
+void 			*_queueDevices = NULL;	
 
 int 			_useSNMP = 0;
 
@@ -316,6 +319,7 @@ void mainLoop()  {
 
 int 				i=0; 
 interfaceData		ifaceData;
+deviceData			devData;
 static time_t		old_db_time=0;
 time_t				current_time=0;
 int 				comm_error=0;
@@ -328,11 +332,17 @@ while(1) {
 	if (_verbose > 6)
 		for (i=0 ; i<_shmDevicesArea->nDevices ; i++)
 			printf("\n            device %i snmpConfigured: %i snmpCaptured: %i ", _shmDevicesArea->d[i].deviceId, _shmDevicesArea->d[i].snmpConfigured, _shmDevicesArea->d[i].snmpCaptured);
-	
-	while (shmQueueGet(_queue, &ifaceData) == 1) {
-		to_db_mem (&ifaceData);
 
+	// send interface (traffic)  data to DB	
+	while (shmQueueGet(_queueInterfaces, &ifaceData) == 1) {
+		to_db_mem (&ifaceData);
 		}
+
+	// send device data to db (last ping, last capture, etc)
+	while (shmQueueGet(_queueDevices, &devData) == 1) {
+		update_devices_mem(&devData);
+		}
+
 
     // preventive disconnection from DB
     if ( ((current_time = time(NULL)) > (old_db_time + 300)) || comm_error ) {
@@ -355,6 +365,7 @@ int 	i=0, iface=0;
 int 	devToInitFound=0;
 int 	devToMeasureFound=0;
 time_t	t=0;
+int 	snmpCaptureOk=0;   // flag to detect changes un traffic counters as 'valid reading' 
 
 sleep(rand()%20);  
 
@@ -398,10 +409,11 @@ while (1) {
 			fflush(stdout);				
 			}
 		}
-	else {   // all devices configured, we can now get traffic counters
+	else {   // all devices configured / initialized, we can now get traffic counters
 
 		pthread_mutex_lock (& (_shmDevicesArea->lock));
 		t = time(NULL);
+		// we check devices: enables, SNMP configured, not already mesured and sample time OK 
 		for (i=0,devToMeasureFound=-1 ; i<_shmDevicesArea->nDevices ; i++) {
 			if (_shmDevicesArea->d[i].enable > 0 &&  _shmDevicesArea->d[i].snmpConfigured == 2 && _shmDevicesArea->d[i].snmpCaptured == 0) {
 				if ( t >= (_shmDevicesArea->d[i].lastRead + _sample_period)) {
@@ -426,22 +438,36 @@ while (1) {
 
 				_shmDevicesArea->d[devToMeasureFound].lastPingOK = time(NULL);
 				
-				for (iface = 0 ; iface < _shmInterfacesArea->nInterfaces ; iface++)   {
+				for (iface = 0, snmpCaptureOk = 0 ; iface < _shmInterfacesArea->nInterfaces ; iface++)   {
 					if (_shmInterfacesArea->d[iface].enable > 0 && _shmDevicesArea->d[devToMeasureFound].deviceId == _shmInterfacesArea->d[iface].deviceId) {
 						snmpCollectBWInfo( &(_shmDevicesArea->d[devToMeasureFound]), &(_shmInterfacesArea->d[iface]));
 
-						// sending to files a DB we need to be sure there are traffic measurements		
-						if (_to_files && _shmInterfacesArea->d[iface].obytes_prev>0 && _shmInterfacesArea->d[iface].ibytes_prev>0)
-							saveToFile( &(_shmInterfacesArea->d[iface]) );
+						// if not first nor second iteration
+						if ( (_shmInterfacesArea->d[iface].obytes_prev>0 || _shmInterfacesArea->d[iface].ibytes_prev>0) &&
+						     (_shmInterfacesArea->d[iface].obytes_prev_prev >0 || _shmInterfacesArea->d[iface].ibytes_prev_prev >0) ) {
 
-						if (_to_memdb && _shmInterfacesArea->d[iface].obytes_prev>0 && _shmInterfacesArea->d[iface].ibytes_prev>0)
-							shmQueuePut(_queue, (void *)&(_shmInterfacesArea->d[iface]));	
+							// sending to files a DB we need to be sure there are traffic measurements		
+							if ( _to_files )
+								saveToFile( &(_shmInterfacesArea->d[iface]) );
 
+							// if we need to send data to DB, we will use SHM queue (parent will perform DB operation)	
+							if ( _to_memdb )
+								shmQueuePut(_queueInterfaces, (void *)&(_shmInterfacesArea->d[iface]));	
+
+							// detect traffic counters change of at least ONE interface for this device
+							if (_shmInterfacesArea->d[iface].obytes_prev != _shmInterfacesArea->d[iface].obytes || _shmInterfacesArea->d[iface].ibytes_prev != _shmInterfacesArea->d[iface].ibytes ) 
+								snmpCaptureOk = 1;
+
+							}
 						}
 					}	
 				pthread_mutex_lock (& (_shmDevicesArea->lock));
 				_shmDevicesArea->d[devToMeasureFound].snmpCaptured = 0 ; // return to 0 to next capture
-				pthread_mutex_unlock (& (_shmDevicesArea->lock));							
+				if (snmpCaptureOk > 0) {
+					_shmDevicesArea->d[devToMeasureFound].lastSNMPOK = time(NULL);				
+					shmQueuePut(_queueDevices, (void *)&(_shmDevicesArea->d[devToMeasureFound]));	
+					}
+				pthread_mutex_unlock (& (_shmDevicesArea->lock));						
 				}
 			else {	
 				if (_verbose > 1) {
@@ -457,6 +483,16 @@ while (1) {
 
 }
 
+
+//------------------------------------------------------------------------
+
+void exitfunction()
+{
+kill(_grandsonPID, SIGTERM);	
+//kill(0, SIGTERM);		// kill everyone on his group (all his children)
+exit(0);
+}
+
 //------------------------------------------------------------------------
 
 // launch children (MAX_WORKERS).
@@ -468,9 +504,10 @@ pid_t				workerPID=0;
 
 for ( i=0 ; i < workers ; i++ )  {
 
-	if ( (workerPID = fork()) > 0 )  {
+	if ( (workerPID = fork()) > 0 )  {    // parent (this process)
 		}
 	else if(workerPID == 0)  {    // worker
+        prctl(PR_SET_PDEATHSIG, SIGTERM); // every child will receive SIGTERM in case parent ends
 		workerRun();
 		}
     else {
@@ -486,14 +523,22 @@ return 1;
 //------------------------------------------------------------------------
 
 // initialize Shared memory areas for main process (father) and workers
+//  2 queues:  devices, interfaces  to send data from forked workers to parent
+// 2 shared memory areas: devices, interfaces 
 
 int shmInit() {
 
 pthread_mutexattr_t mattr, ifaceAttr;
 
-// create shared memory queue  to exchange data between workers and main process  
-if ( shmQueueInit(&_queue, sizeof(interfaceData), MAX_SHM_QUEUE_SIZE) != 1 )   {
-    printf("\n\n ATENTION:   shmArea for QUEUE ERROR !  \n\n");
+// create shared memory queue  to exchange data between workers and main process  (interfaces) 
+if ( shmQueueInit(&_queueInterfaces, sizeof(interfaceData), MAX_SHM_QUEUE_SIZE) != 1 )   {
+    printf("\n\n ATENTION:   shmArea for Interfaces QUEUE ERROR !  \n\n");
+    exit(EXIT_FAILURE);
+    } 
+
+// create shared memory queue  to exchange data between workers and main process  (devices)
+if ( shmQueueInit(&_queueDevices, sizeof(deviceData), MAX_SHM_QUEUE_SIZE) != 1 )   {
+    printf("\n\n ATENTION:   shmArea for Devices QUEUE ERROR !  \n\n");
     exit(EXIT_FAILURE);
     } 
 

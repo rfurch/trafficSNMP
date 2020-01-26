@@ -420,16 +420,15 @@ return(retval);
 
 //-------------------------------------------------------------------
 
-int update_devices_mem_ping_time(int dev_id)
+int update_devices_mem(deviceData *d)
 {
 char                sqlquery[200];
 int                 retval=0;
 
 db_connect();
 
-sprintf(sqlquery, "UPDATE topology.devices_mem SET last_icmp_ok=NOW() WHERE id=%i;", dev_id);
+sprintf(sqlquery, "UPDATE topology.devices_mem SET last_icmp_ok=%li,  last_snmp_ok=%li WHERE id=%i;", d->lastPingOK, d->lastSNMPOK, d->deviceId);
 mysql_query(_mysql_connection_handler, sqlquery);
-
 return(retval);
 }
 

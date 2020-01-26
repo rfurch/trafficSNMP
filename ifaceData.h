@@ -267,7 +267,7 @@ int to_db_hist (deviceData *d);
 int delete_from_db_mem ();
 int db_keepalive(char *name);
 int report_alarm(deviceData *d, interfaceData *iface);
-int update_devices_mem_ping_time(int dev_id);
+int update_devices_mem(deviceData *d);
 
 
 char *adc_ltrim(char *s);
