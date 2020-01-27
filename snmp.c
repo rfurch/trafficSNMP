@@ -73,7 +73,7 @@ if ( snmpVerifyIfXTable (d, NULL ) == 0)
     d->use64bitsCounters = 1;
 
 // get interface position in IF-TABLE (1.3.6.1.2.1.2.2.1.2). In case of error we cannot continue...
-// in error we  also in ifXtable  (1.3.6.1.2.1.31.1.1.1.1) 
+// in case of error we also look into ifXtable  (1.3.6.1.2.1.31.1.1.1.1) 
 if ( (ret = getIndexOfInterfaces( d, shmInt, "1.3.6.1.2.1.2.2.1.2")) != 0 ) {
     if ( (ret = getIndexOfInterfaces( d, shmInt, "1.3.6.1.2.1.31.1.1.1.1")) != 0 ) {
         printf("\n\n UNABLE to find some Interfaces (device *%s, %s) error returned: %i !! \n\n", d->name, d->ip, ret );

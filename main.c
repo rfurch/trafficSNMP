@@ -363,7 +363,7 @@ while ((opt = getopt_long(argc, argv, "c:s:d:r:w:ehfmvaS", longopts, 0)) != -1)
         }
     }
 
-if ( _to_epics==0 && _to_files==0 && _to_memdb==0 && _to_hisdb==0 ) {
+if ( _to_epics==0 && _to_files==0 && _to_memdb==0 && _to_hisdb==0 && _deviceToCheck<0 ) {
   printf("\n\n ATENTION:   collected data will not be recorded to DB, MEM, FILE, etc!  \n\n");
   printUsage(argv[0]);
   exit(0);
@@ -647,7 +647,128 @@ return(1);
 //------------------------------------------------------------------------
 
 int verifyDevice (int deviceId) {
-	return(0);
+
+int 			i=0,j=0;
+int 			nDevices=0;
+
+if ( (nDevices = dbreadOneDevice ( _shmDevicesArea, _shmInterfacesArea,  deviceId)) < 1 ) {
+	printf("\n Device %i not present (or disabled) in devices + devices_bw...\n\n", deviceId);
+	fflush(stdout);
+	return(-1);
+}
+
+for (i=0 ; i<_shmDevicesArea->nDevices ; i++)  {
+	deviceData *d = &(_shmDevicesArea->d[i]);
+
+	printf("\n\n Device: (%i) %i -->  %s (%s) enable: %i getrun: %i cliacc: %i, vendor:%i, model: %i ifs: %i", i, d->deviceId, d->name, d->ip, d->enable, d->getrunn, d->cli_acc, d->vendor_id, d->model_id, d->nInterfaces);
+	if ( d->snmp <= 0)
+		printf("\n REMEMBER TO configure 'snmp' field in 'devices' table to 1 or 2");
+	for (j=0 ; j < _shmInterfacesArea->nInterfaces ; j++) {
+		interfaceData *ifs = &(_shmInterfacesArea->d[j]); 
+		if (d->deviceId == ifs->deviceId)	
+			printf("\n      %i:  devid: %i  ifid: %i  enable: %i  ifname: %s  fvarname: %s alarm_lo: %i  ", j, ifs->deviceId, ifs->interfaceId, ifs->enable, ifs->name, ifs->file_var_name, ifs->alarm_lo);
+		}
+	}	
+
+printf("\n\n Checking ICMP.....");	
+
+for (i=0 ; i<_shmDevicesArea->nDevices ; i++)  {
+	deviceData *d = &(_shmDevicesArea->d[i]);
+	if ( ! ( ping(d->ip)==0 || ping(d->ip)==0 || ping(d->ip)==0 ) ) {
+		printf("  NOT reachable via ICMP. Aborting test... \n\n ");
+		fflush(stdout);
+		return(-1);
+		}
+	else {	
+		printf("  OK");
+		fflush(stdout);
+		}
+	}
+
+printf("\n\n Checking SNMP community and version...");	
+fflush(stdout);
+for (i=0 ; i<_shmDevicesArea->nDevices ; i++)  {
+	deviceData *d = &(_shmDevicesArea->d[i]);
+
+	d->snmpVersion = -1;
+
+	printf("\n Testing V2, Vosto...."); fflush(stdout);
+	if ( snmpGetSysDesrc (SNMP_VERSION_2c, "Vostok3KA", d->ip, NULL) == 0 ) {
+		strcpy(d->snmpCommunity, "Vostok3KA");
+		d->snmpVersion = SNMP_VERSION_2c;
+		printf("   OK");
+		}
+	else {
+		printf("   ERROR / TIMEOUT");
+		printf("\n Testing V2, pub...."); fflush(stdout);
+		if ( snmpGetSysDesrc (SNMP_VERSION_2c, "public", d->ip, NULL) == 0 ) {
+			strcpy(d->snmpCommunity, "public");
+			d->snmpVersion = SNMP_VERSION_2c;
+			printf("   OK");
+			}
+		else {
+			printf("   ERROR / TIMEOUT");
+			printf("\n Testing V1, Vosto...."); fflush(stdout);
+			if ( snmpGetSysDesrc (SNMP_VERSION_1, "Vostok3KA", d->ip, NULL) == 0 ) {
+				strcpy(d->snmpCommunity, "Vostok3KA");
+				d->snmpVersion = SNMP_VERSION_1;
+				printf("   OK");
+				}
+			else {
+				printf("   ERROR / TIMEOUT");
+				printf("\n Testing V1, pub...."); fflush(stdout);
+				if ( snmpGetSysDesrc (SNMP_VERSION_1, "public", d->ip, NULL) == 0 ) {
+					strcpy(d->snmpCommunity, "public");
+					d->snmpVersion = SNMP_VERSION_1;
+					printf("   OK");
+					}
+				else {
+					printf("   ERROR / TIMEOUT");
+					}
+				}
+			}
+		}
+
+if (d->snmpVersion > -1) {
+	int ret = 0, iface = 0;
+
+	printf("\n Testing ifXtable ...."); fflush(stdout);
+	if ( snmpVerifyIfXTable (d, NULL ) == 0)
+		printf("   OK");
+	else 
+		printf("   Not present ....");
+
+	printf("\n Testing Interfaces ID...."); fflush(stdout);
+
+	// get interface position in IF-TABLE (1.3.6.1.2.1.2.2.1.2). In case of error we cannot continue...
+	// in case of error we also look into ifXtable  (1.3.6.1.2.1.31.1.1.1.1) 
+	if ( (ret = getIndexOfInterfaces( d, _shmInterfacesArea, "1.3.6.1.2.1.2.2.1.2")) != 0 ) {
+		if ( (ret = getIndexOfInterfaces( d, _shmInterfacesArea, "1.3.6.1.2.1.31.1.1.1.1")) != 0 ) {
+			printf("\n\n UNABLE to find some Interfaces (device *%s, %s) error returned: %i !! \n\n", d->name, d->ip, ret );
+
+			}
+		}
+
+	for (iface = 0 ; iface < _shmInterfacesArea->nInterfaces ; iface++)   {
+		if (_shmInterfacesArea->d[iface].enable > 0 && d->deviceId == _shmInterfacesArea->d[iface].deviceId) {
+//				printf("\n    Interface %s (file:%s) ", _shmInterfacesArea->d[iface].name, _shmInterfacesArea->d[iface].file_var_name);
+			printf("\n    Interface %30s ....  ", _shmInterfacesArea->d[iface].name);
+			if ( strlen(_shmInterfacesArea->d[iface].oidIndex) > 0 )
+				printf(" ok (index: %s) ", _shmInterfacesArea->d[iface].oidIndex);
+			else
+				printf(" NOT FOUND ******************** ");
+			}
+		}
+	}
+else 	
+	printf(" \n\n SNMP v1/2 configured on device ? ");
+
+}
+
+printf("\n\n");	
+fflush(stdout);	
+
+return(0);
 }
 
 //------------------------------------------------------------------------
@@ -666,14 +787,14 @@ strcpy(_server, "dbserver01");
 // check arguments!
 parseArguments(argc, argv);
 
+// crate SHared memory areas
+shmInit();
+
 // if we are in 'checking device mode', just check and exit
 if (_deviceToCheck > 0) {
 	verifyDevice(_deviceToCheck);
 	exit(0);
 	}
-
-// crate SHared memory areas
-shmInit();
 
 while (dbread (_shmDevicesArea, _shmInterfacesArea) <= 0)
   {

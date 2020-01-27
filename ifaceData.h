@@ -263,6 +263,7 @@ int db_connect();
 int db_disconnect();
 int to_db_mem (interfaceData *d);
 int dbread (devicesShm *shmDev, interfacesShm *shmInt);
+int dbreadOneDevice (devicesShm *shmDev, interfacesShm *shmInt, int deviceId);
 int to_db_hist (deviceData *d);
 int delete_from_db_mem ();
 int db_keepalive(char *name);
