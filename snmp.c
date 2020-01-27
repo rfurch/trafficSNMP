@@ -297,17 +297,34 @@ int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstO
                     // get interface position in IF-TABLE. In case of error we cannot continue...
                     for (iface = 0 ; iface < shmInt->nInterfaces ; iface++)   {
                         if (shmInt->d[iface].enable > 0 && d->deviceId == shmInt->d[iface].deviceId) {
-                            if (strcasecmp(shmInt->d[iface].name, (char *)(vars->val.string)) == 0) {
-                                if ( _verbose > 1)            
-                                    printf("\n --- FOUND:  |%s|%s| \n" , vars->val.string, mybuff);
-                                strcpy(shmInt->d[iface].oidIndex, strrchr(mybuff, '.') + 1);
-                                ifaceFound++;
-                                }
+                            if (strlen(shmInt->d[iface].oidIndex)<1) {
+                                if (strcasecmp(shmInt->d[iface].name, (char *)(vars->val.string)) == 0) {
+                                    if ( _verbose > 1)            
+                                        printf("\n --- FOUND:  |%s|%s| \n" , vars->val.string, mybuff);
+                                    strcpy(shmInt->d[iface].oidIndex, strrchr(mybuff, '.') + 1);
+                                    }
+                                else {   // we try removing whitespaces... spsecial case for RAISECOM!!!
+                                    char    auxStr[300];
+                                    remove_spaces (auxStr, shmInt->d[iface].name);
+                                    if (strcasecmp(auxStr, (char *)(vars->val.string)) == 0) {
+                                        if ( _verbose > 1)            
+                                            printf("\n --- FOUND:  |%s|%s|%s|%s| \n" , shmInt->d[iface].name, auxStr, vars->val.string, mybuff);
+                                        strcpy(shmInt->d[iface].oidIndex, strrchr(mybuff, '.') + 1);
+                                        }
+                                    }    
+                                }   
                             }    
                         }    
+
+                    // check if all interfaces have OID index
+                    for (iface = 0, ifaceFound=0 ; iface < shmInt->nInterfaces ; iface++)   
+                        if (shmInt->d[iface].enable > 0 && d->deviceId == shmInt->d[iface].deviceId) 
+                            if (strlen(shmInt->d[iface].oidIndex) > 0) 
+                                ifaceFound++;
+
                     if (ifaceFound == d->nInterfaces) {  // all interfaces found    
                         if ( _verbose > 1)            
-                            printf("\n --- ALL Interfaces FOUND in IF - TABLE \n");
+                            printf("\n --- ALL Interfaces FOUND in IF - TABLE (%i)  \n", ifaceFound);
 
                         running = 0;
                         exitval = 0;

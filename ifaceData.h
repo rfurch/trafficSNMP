@@ -237,6 +237,7 @@ extern device_list		_devList;
 
 
 // util.c
+void remove_spaces (char* restrict str_trimmed, const char* restrict str_untrimmed);
 int randomDelay(int min, int max);
 char *adc_ltrim(char *s);
 char *adc_rtrim(char *s);
