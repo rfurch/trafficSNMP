@@ -74,9 +74,9 @@ interfacesShm	*_shmInterfacesArea = NULL;
 void 			*_queueInterfaces = NULL;	
 void 			*_queueDevices = NULL;	
 
-int 			_useSNMP = 0;
+int 			_deviceToCheck = -1;  // set to verify SNMP info from specific device
 
-int 			_maxRandomStartDelay = 30;
+int 			_useSNMP = 0;
 
 //------------------------------------------------------------------------                                   
 //------------------------------------------------------------------------
@@ -99,10 +99,10 @@ printf ("USAGE: %s [options]\n", prgname);
 printf ("Options:\n");
 printf ("  -h, --help   Print this help \n");
 printf ("  -v   Verbose mode\n");
+printf ("  -c DEVICE_ID  Check specific device (for SNMP, vars, etc) and exit. \n");
 printf ("  -e   send data to epics (deactivated by default) \n");
 printf ("  -H   send data to historic DB  (deactivated by default) \n");
 printf ("  -m   send data to MEMORY DB  (deactivated by default) \n");
-printf ("  -M   Maximum start delay (default 30 sec) (Prevents DB hangs) \n");
 printf ("  -f   send data to FILES  (deactivated by default) \n");
 printf ("  -a   send alarms  (deactivated by default) \n");
 printf ("  -d   database server  (default dbserver01) \n");
@@ -296,7 +296,7 @@ struct option longopts[] = {
 	{ 0 }
 };
 
-while ((opt = getopt_long(argc, argv, "M:s:d:r:w:ehfmvaS", longopts, 0)) != -1)
+while ((opt = getopt_long(argc, argv, "c:s:d:r:w:ehfmvaS", longopts, 0)) != -1)
     {
     switch (opt)
         {
@@ -310,6 +310,10 @@ while ((opt = getopt_long(argc, argv, "M:s:d:r:w:ehfmvaS", longopts, 0)) != -1)
 
         case 'w':
             _workers = atoi(optarg);
+        break;
+
+        case 'c':
+            _deviceToCheck = atoi(optarg);
         break;
 
         case 'f':
@@ -326,11 +330,6 @@ while ((opt = getopt_long(argc, argv, "M:s:d:r:w:ehfmvaS", longopts, 0)) != -1)
 
         case 'a':
             _send_alarm=1;
-        break;
-
-        case 'M':
-      		if(optarg)
-          	_maxRandomStartDelay=atoi(optarg);
         break;
 
         case 'p':
@@ -390,7 +389,9 @@ old_db_time = current_time = time(NULL);
 
 while(1) {
 
-	printf("\n           mainLoop ... ");
+	if (_verbose > 3) 
+		printf("\n           mainLoop ... ");
+
 	if (_verbose > 6)
 		for (i=0 ; i<_shmDevicesArea->nDevices ; i++)
 			printf("\n            device %i snmpConfigured: %i snmpCaptured: %i ", _shmDevicesArea->d[i].deviceId, _shmDevicesArea->d[i].snmpConfigured, _shmDevicesArea->d[i].snmpCaptured);
@@ -402,6 +403,8 @@ while(1) {
 
 	// send device data to db (last ping, last capture, etc)
 	while (shmQueueGet(_queueDevices, &devData) == 1) {
+		//printf("\n  --- saco %li  devid %i ", devData.lastPingOK, devData.deviceId );
+		//fflush(stdout);
 		update_devices_mem(&devData);
 		}
 
@@ -491,7 +494,7 @@ while (1) {
 
 			_shmDevicesArea->d[devToMeasureFound].lastRead = t;
 
-			if ( ping(_shmDevicesArea->d[devToMeasureFound].ip)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip)==0 ) {
+			if ( ping(_shmDevicesArea->d[devToMeasureFound].ip)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip)==0  ) {
 			
 				if (_verbose > 1) {
 					printf("\n Worker %i collecting info via SNMP from device (%s, %s)", getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip);
@@ -525,7 +528,10 @@ while (1) {
 				pthread_mutex_lock (& (_shmDevicesArea->lock));
 				_shmDevicesArea->d[devToMeasureFound].snmpCaptured = 0 ; // return to 0 to next capture
 				if (snmpCaptureOk > 0) {
-					_shmDevicesArea->d[devToMeasureFound].lastSNMPOK = time(NULL);				
+					_shmDevicesArea->d[devToMeasureFound].lastSNMPOK = time(NULL);		
+
+					//printf("\n Pongo %li en dev %i", _shmDevicesArea->d[devToMeasureFound].lastPingOK , _shmDevicesArea->d[devToMeasureFound].deviceId)		;
+					//fflush(stdout);
 					shmQueuePut(_queueDevices, (void *)&(_shmDevicesArea->d[devToMeasureFound]));	
 					}
 				pthread_mutex_unlock (& (_shmDevicesArea->lock));						
@@ -639,6 +645,12 @@ return(1);
 }
 
 //------------------------------------------------------------------------
+
+int verifyDevice (int deviceId) {
+	return(0);
+}
+
+//------------------------------------------------------------------------
 //------------------------------------------------------------------------
 
 int main(int argc, char *argv[])
@@ -653,6 +665,12 @@ strcpy(_server, "dbserver01");
 
 // check arguments!
 parseArguments(argc, argv);
+
+// if we are in 'checking device mode', just check and exit
+if (_deviceToCheck > 0) {
+	verifyDevice(_deviceToCheck);
+	exit(0);
+	}
 
 // crate SHared memory areas
 shmInit();

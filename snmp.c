@@ -320,11 +320,13 @@ int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstO
                         
                         //  not an exception value 
                         if (snmp_oid_compare(name, name_length, vars->name, vars->name_length) >= 0) {
-                            fprintf(stderr, "Error: OID not increasing: ");
-                            fprint_objid(stderr, name, name_length);
-                            fprintf(stderr, " >= ");
-                            fprint_objid(stderr, vars->name, vars->name_length);
-                            fprintf(stderr, "\n");
+                            if (_verbose > 3) {
+                                fprintf(stderr, "Error: OID not increasing: ");
+                                fprint_objid(stderr, name, name_length);
+                                fprintf(stderr, " >= ");
+                                fprint_objid(stderr, vars->name, vars->name_length);
+                                fprintf(stderr, "\n");
+                            }
                             running = 0;
                             exitval = -2;
                         }
@@ -341,22 +343,24 @@ int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstO
                     if (_verbose > 1)
                         printf("End of MIB\n");
                 } else {
-                    fprintf(stderr, "Error in packet.\nReason: %s\n", snmp_errstring(response->errstat));
+                    if (_verbose > 3) 
+                        fprintf(stderr, "Error in packet.\nReason: %s\n", snmp_errstring(response->errstat));
                     if (response->errindex != 0) {
-                        fprintf(stderr, "Failed object: ");
-                        for (count = 1, vars = response->variables;
-                             vars && count != response->errindex;
-                             vars = vars->next_variable, count++)
-                            /*EMPTY*/;
-                        if (vars)
-                            fprint_objid(stderr, vars->name, vars->name_length);
-                        fprintf(stderr, "\n");}
+                        if (_verbose > 3) { 
+                            fprintf(stderr, "Failed object: ");
+                            for (count = 1, vars = response->variables; vars && count != response->errindex; vars = vars->next_variable, count++)
+                                /*EMPTY*/;
+                            if (vars)
+                                fprint_objid(stderr, vars->name, vars->name_length);
+                            fprintf(stderr, "\n");
+                            }
+                        }       
                     exitval = -3;
                 }
             }
         } else if (status == STAT_TIMEOUT) {
-            fprintf(stderr, "Timeout: No Response from %s\n",
-                    session.peername);
+            if (_verbose > 3) 
+                fprintf(stderr, "Timeout: No Response from %s\n", session.peername);
             running = 0;
             exitval = -4;
         } else {                /* status == STAT_ERROR */
@@ -483,11 +487,13 @@ int getIndexOfInterface(long snmpVersion, char *interfaceName, char *walkFirstOI
                         
                         //  not an exception value 
                         if (snmp_oid_compare(name, name_length,vars->name, vars->name_length) >= 0) {
-                            fprintf(stderr, "Error: OID not increasing: ");
-                            fprint_objid(stderr, name, name_length);
-                            fprintf(stderr, " >= ");
-                            fprint_objid(stderr, vars->name, vars->name_length);
-                            fprintf(stderr, "\n");
+                            if (_verbose > 3) {
+                                fprintf(stderr, "Error: OID not increasing: ");
+                                fprint_objid(stderr, name, name_length);
+                                fprintf(stderr, " >= ");
+                                fprint_objid(stderr, vars->name, vars->name_length);
+                                fprintf(stderr, "\n");
+                                }
                             running = 0;
                             exitval = -2;
                         }
@@ -504,22 +510,26 @@ int getIndexOfInterface(long snmpVersion, char *interfaceName, char *walkFirstOI
                     if (_verbose > 0)
                         printf("End of MIB\n");
                 } else {
-                    fprintf(stderr, "Error in packet.\nReason: %s\n", snmp_errstring(response->errstat));
+                    if (_verbose > 3) 
+                        fprintf(stderr, "Error in packet.\nReason: %s\n", snmp_errstring(response->errstat));
                     if (response->errindex != 0) {
-                        fprintf(stderr, "Failed object: ");
-                        for (count = 1, vars = response->variables;
-                             vars && count != response->errindex;
-                             vars = vars->next_variable, count++)
-                            /*EMPTY*/;
-                        if (vars)
-                            fprint_objid(stderr, vars->name, vars->name_length);
-                        fprintf(stderr, "\n");}
+                        if (_verbose > 3) {
+                            fprintf(stderr, "Failed object: ");
+                            for (count = 1, vars = response->variables;
+                                 vars && count != response->errindex;
+                                 vars = vars->next_variable, count++)
+                                /*EMPTY*/;
+                            if (vars)
+                                fprint_objid(stderr, vars->name, vars->name_length);
+                            fprintf(stderr, "\n");
+                            }
+                        }    
                     exitval = -3;
                 }
             }
         } else if (status == STAT_TIMEOUT) {
-            fprintf(stderr, "Timeout: No Response from %s\n",
-                    session.peername);
+            if (_verbose > 3) 
+                fprintf(stderr, "Timeout: No Response from %s\n", session.peername);
             running = 0;
             exitval = -4;
         } else {                /* status == STAT_ERROR */
@@ -643,19 +653,22 @@ int getInOutCounters (long snmpVersion, char *community, char *ipAddress, char *
                   }
                 }
         } else {
-            fprintf(stderr, "Error in packet\nReason: %s\n",
-                    snmp_errstring(response->errstat));
+
+            if (_verbose > 3) 
+                fprintf(stderr, "Error in packet\nReason: %s\n", snmp_errstring(response->errstat));
 
             if (response->errindex != 0) {
-                fprintf(stderr, "Failed object: ");
-                for (count = 1, vars = response->variables;
-                     vars && count != response->errindex;
-                     vars = vars->next_variable, count++)
-                    /*EMPTY*/;
-                if (vars) {
-                    fprint_objid(stderr, vars->name, vars->name_length);
-		}
+                if (_verbose > 3) {
+                    fprintf(stderr, "Failed object: ");
+                    for (count = 1, vars = response->variables;
+                         vars && count != response->errindex;
+                         vars = vars->next_variable, count++)
+                        /*EMPTY*/;
+                    if (vars) 
+                        fprint_objid(stderr, vars->name, vars->name_length);
+		            
                 fprintf(stderr, "\n");
+                }
             }
             exitval = -2;
 
@@ -671,8 +684,8 @@ int getInOutCounters (long snmpVersion, char *community, char *ipAddress, char *
         }                       /* endif -- SNMP_ERR_NOERROR */
 
     } else if (status == STAT_TIMEOUT) {
-        fprintf(stderr, "Timeout: No Response from %s.\n",
-                session.peername);
+        if (_verbose > 3) 
+            fprintf(stderr, "Timeout: No Response from %s.\n", session.peername);
         exitval = -3;
 
     } else {                    /* status == STAT_ERROR */
@@ -762,30 +775,33 @@ int snmpGetSysDesrc (long snmpVersion, char *community, char *ip, char *result )
     if (status == STAT_SUCCESS) {
         if (response->errstat == SNMP_ERR_NOERROR) {
             for (vars = response->variables, counter=0; vars; counter++, vars = vars->next_variable) {
-                print_variable(vars->name, vars->name_length, vars);
+                if (_verbose > 2)
+                    print_variable(vars->name, vars->name_length, vars);
 
                 if (vars->type == ASN_OCTET_STR) {
-                    if (_verbose > 0)
+                    if (_verbose > 1)
                         printf("\n es un STRING:  %s \n ", vars->val.string);
                     if (result)
                         strcpy(result, (char *)vars->val.string);
                     }
                 }
         } else {
-            fprintf(stderr, "Error in packet\nReason: %s\n",
-                    snmp_errstring(response->errstat));
+            if (_verbose > 3) 
+                fprintf(stderr, "Error in packet\nReason: %s\n", snmp_errstring(response->errstat));
 
             if (response->errindex != 0) {
-                fprintf(stderr, "Failed object: ");
-                for (count = 1, vars = response->variables;
-                     vars && count != response->errindex;
-                     vars = vars->next_variable, count++)
-                    /*EMPTY*/;
-                if (vars) {
-                    fprint_objid(stderr, vars->name, vars->name_length);
-		}
-                fprintf(stderr, "\n");
-            }
+                if (_verbose > 3) {
+                    fprintf(stderr, "Failed object: ");
+                    for (count = 1, vars = response->variables;
+                         vars && count != response->errindex;
+                         vars = vars->next_variable, count++)
+                        /*EMPTY*/;
+                    if (vars) 
+                        fprint_objid(stderr, vars->name, vars->name_length);
+		                
+                    fprintf(stderr, "\n");
+                    }
+                }
             exitval = -2;
 
             // * retry if the errored variable was successfully removed 
@@ -800,8 +816,8 @@ int snmpGetSysDesrc (long snmpVersion, char *community, char *ip, char *result )
         }                       /* endif -- SNMP_ERR_NOERROR */
 
     } else if (status == STAT_TIMEOUT) {
-        fprintf(stderr, "Timeout: No Response from %s.\n",
-                session.peername);
+        if (_verbose > 3) 
+            fprintf(stderr, "Timeout: No Response from %s.\n", session.peername);
         exitval = -3;
 
     } else {                    /* status == STAT_ERROR */
@@ -890,13 +906,14 @@ int snmpVerifyIfXTable (deviceData *d, unsigned long long int *inCounter )
     if (status == STAT_SUCCESS) {
         if (response->errstat == SNMP_ERR_NOERROR) {
             for (vars = response->variables, counter=0; vars; counter++, vars = vars->next_variable) {
-                print_variable(vars->name, vars->name_length, vars);
+                if (_verbose > 2)
+                    print_variable(vars->name, vars->name_length, vars);
 
                 if (vars->type == ASN_COUNTER64) {
                     long i64 = 0;
                     i64 = vars->val.counter64->low;
                     i64 |= vars->val.counter64->high << 32;
-                    if (_verbose > 0)
+                    if (_verbose > 1)
                         printf("\n es un COUNTER64:  |%li| \n ", i64);
 
                     if (inCounter)    
@@ -904,20 +921,22 @@ int snmpVerifyIfXTable (deviceData *d, unsigned long long int *inCounter )
                     }
                 }
         } else {
-            fprintf(stderr, "Error in packet\nReason: %s\n",
-                    snmp_errstring(response->errstat));
+            if (_verbose > 3) 
+                fprintf(stderr, "Error in packet\nReason: %s\n", snmp_errstring(response->errstat));
 
             if (response->errindex != 0) {
-                fprintf(stderr, "Failed object: ");
-                for (count = 1, vars = response->variables;
-                     vars && count != response->errindex;
-                     vars = vars->next_variable, count++)
-                    /*EMPTY*/;
-                if (vars) {
-                    fprint_objid(stderr, vars->name, vars->name_length);
-		}
-                fprintf(stderr, "\n");
-            }
+                if (_verbose > 3) {
+                    fprintf(stderr, "Failed object: ");
+                    for (count = 1, vars = response->variables;
+                         vars && count != response->errindex;
+                        vars = vars->next_variable, count++)
+                        /*EMPTY*/;
+                    if (vars) 
+                        fprint_objid(stderr, vars->name, vars->name_length);
+	
+                    fprintf(stderr, "\n");
+                    }
+                }
             exitval = -2;
 
             // * retry if the errored variable was successfully removed 
@@ -932,8 +951,8 @@ int snmpVerifyIfXTable (deviceData *d, unsigned long long int *inCounter )
         }                       /* endif -- SNMP_ERR_NOERROR */
 
     } else if (status == STAT_TIMEOUT) {
-        fprintf(stderr, "Timeout: No Response from %s.\n",
-                session.peername);
+        if (_verbose > 3)
+            fprintf(stderr, "Timeout: No Response from %s.\n", session.peername);
         exitval = -3;
 
     } else {                    /* status == STAT_ERROR */

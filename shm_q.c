@@ -94,10 +94,10 @@ q = (shmQueueHeader *) queue;
 pthread_mutex_lock (& (q->lock));
 
 if (q->n < (q->maxElements))	{ // is there any space?
-    memmove( queue + sizeof(shmQueueHeader) + (q->elementSize * q->n), data, q->elementSize);
+    memmove( queue + sizeof(shmQueueHeader) + (q->elementSize * q->head ), data, q->elementSize);
     
     // check if head returns to 0 (circular buffer!)
-    (q->head) =  ( q->head < (q->n - 1)) ? (q->head)+1 : 0;
+    (q->head) =  ( q->head < (q->maxElements - 1)) ? (q->head)+1 : 0;
     (q->n)++;  
 
     if (_verbose > 4)  { 
@@ -133,10 +133,10 @@ pthread_mutex_lock (& (q->lock));
 
 if (q->n > 0)	// are there any elements in queue?
   {
-  memmove(data, queue + sizeof(shmQueueHeader) + (q->elementSize * q->n), q->elementSize);
+  memmove(data, queue + sizeof(shmQueueHeader) + (q->elementSize * q->tail), q->elementSize);
   
   // check if tail returns to 0 (circular buffer!)
-  (q->tail) =  ( q->tail < (q->n - 1)) ? (q->tail)+1 : 0;
+  (q->tail) =  ( q->tail < (q->maxElements - 1)) ? (q->tail)+1 : 0;
   (q->n)--;  
 
   if (_verbose > 4)  { 
