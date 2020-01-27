@@ -117,9 +117,9 @@ if (d->use64bitsCounters) {
     sprintf(outCounterOid, "1.3.6.1.2.1.31.1.1.1.10.%s", iface->oidIndex);
     }
 else {
-sprintf(inCounterOid, "1.3.6.1.2.1.2.2.1.10.%s", iface->oidIndex);
-sprintf(outCounterOid, "1.3.6.1.2.1.2.2.1.16.%s", iface->oidIndex);
-}
+    sprintf(inCounterOid, "1.3.6.1.2.1.2.2.1.10.%s", iface->oidIndex);
+    sprintf(outCounterOid, "1.3.6.1.2.1.2.2.1.16.%s", iface->oidIndex);
+    }
 
 if ( getInOutCounters (d->snmpVersion, d->snmpCommunity, d->ip, inCounterOid, outCounterOid, &lli1,  &lli2) != 0) 
     printf("\n ERROR getting IN / OUT counters !!! \n");
@@ -147,19 +147,19 @@ else
   if (auxout < (((long long int)200) * 1000 * 1000 * 1000))  // < 200Gbps 
 	iface->obw =  auxout;  
 
-  if ( iface->ibytes_prev_prev == 0 ) // second pass after starting the program, it's a good idea to use current 'instant' traffic as average!
-	{
-	int j=0;
-
-	for (j=0 ; j<MAXAVGBUF ; j++)	// copy FIRST sample to the WHOLE buffer
-		iface->ibw_buf[j] = iface->ibw;
-	iface->ibw_a	= iface->ibw_b = iface->ibw_c = iface->ibw;
-
-	for (j=0 ; j<MAXAVGBUF ; j++)	// copy FIRST sample to the WHOLE buffer
-		iface->obw_buf[j] = iface->obw;
-	iface->obw_a	= iface->obw_b = iface->obw_c = iface->obw;
-	}
-  else
+// if ( iface->ibytes_prev_prev == 0 ) // second pass after starting the program, it's a good idea to use current 'instant' traffic as average!
+//	{
+//	int j=0;
+//
+//	for (j=0 ; j<MAXAVGBUF ; j++)	// copy FIRST sample to the WHOLE buffer
+//		iface->ibw_buf[j] = iface->ibw;
+//	iface->ibw_a	= iface->ibw_b = iface->ibw_c = iface->ibw;
+//
+//	for (j=0 ; j<MAXAVGBUF ; j++)	// copy FIRST sample to the WHOLE buffer
+//		iface->obw_buf[j] = iface->obw;
+//	iface->obw_a	= iface->obw_b = iface->obw_c = iface->obw;
+//	}
+//  else
   	  {
 	  // shift and copy AVG buffer.  Last value is always in the first position, previous in the second an so on...
 	  memmove( &(iface->ibw_buf[1]), &(iface->ibw_buf[0]), sizeof((iface->ibw_buf[0])) * (MAXAVGBUF - 1) );  
@@ -189,8 +189,8 @@ if (_verbose > 1 )
   printf("\n\n --------------------------- ");
   printf("\n interface: %s  (%s)", iface->name, iface->description);
   printf("\n delta t:  %lf", delta_t);
-  printf("\n ibw: %lf ibw_a: %lf", iface->ibw, iface->ibw_a);
-  printf("\n obw: %lf obw_a: %lf", iface->obw, iface->obw_a);
+  printf("\n ibw: %lf ibw_a: %lf ibw_b: %lf ibw_c: %lf", iface->ibw, iface->ibw_a, iface->ibw_b, iface->ibw_c);
+  printf("\n obw: %lf obw_a: %lf obw_b: %lf obw_c: %lf", iface->obw, iface->obw_a, iface->obw_b, iface->obw_c);
   printf("\n ibytes: %lli obytes: %lli", iface->ibytes, iface->obytes);
   printf("\n ibytes prev: %lli obytes prev: %lli", iface->ibytes_prev, iface->obytes_prev);
   printf("\n --------------------------- \n\n"); 
