@@ -44,7 +44,7 @@
 
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
-#include </usr/local/include/hiredis/hiredis.h>
+#include <hiredis.h>
 
 
 #include "ifaceData.h"                                                                                                     
