@@ -478,11 +478,11 @@ if (_verbose > 1) {
 
 // connect to redis. In case of failure we will attempt later
 struct timeval timeout = { 1, 500000 }; // 1.5 seconds
-c = redisConnectUnixWithTimeout("127.0.0.1", timeout);
+c = redisConnectWithTimeout("127.0.0.1", 6379, timeout);
 
     if (c == NULL || c->err) {
         if (c) {
-            printf("Connection error: %s\n", c->errstr);
+            printf("REDIS Connection error: %s\n", c->errstr);
             redisFree(c);
 			}
 		else 
@@ -496,17 +496,17 @@ while(1) {
 		//  set in memory HASH 
 		sprintf(myStr, "HSET devices_bw:%i 'json' '{\"name\":\"%s\",\"descr\":\"%s\",\"ibw\":%.2f,\"obw\":%.2f,\"file\":\"%s\"}'  'name' '%s' 'descr' '%s' 'ibw' '%.2f' 'obw' '%.2f' ", ifaceData.interfaceId, ifaceData.name, ifaceData.description, ifaceData.ibw_a, ifaceData.obw_a, ifaceData.file_var_name ,ifaceData.name, ifaceData.description, ifaceData.ibw_a, ifaceData.obw_a);
         reply = redisCommand(c, myStr);
+		//printf("\n %s", reply->str );
         freeReplyObject(reply);
 
 		// reccord also in a SET (kinf of index)
         reply = redisCommand(c, "SADD devices_bw %i", ifaceData.interfaceId );
+		//printf("\n %s", reply->str );
         freeReplyObject(reply);
 		}
 
 	fflush(stdout);
 	sleep (1);
-	}
-
 
     // preventive disconnection from DB
     if ( ((current_time = time(NULL)) > (old_db_time + 300)) || comm_error ) {
@@ -515,21 +515,18 @@ while(1) {
     	redisFree(c);	  
 
 		struct timeval timeout = { 1, 500000 }; // 1.5 seconds
-		c = redisConnectUnixWithTimeout("127.0.0.1", timeout);
+		c = redisConnectWithTimeout("127.0.0.1", 6379, timeout);
 
 			if (c == NULL || c->err) {
 				if (c) {
-					printf("Connection error: %s\n", c->errstr);
+					printf("REDIS Connection error: %s\n", c->errstr);
 					redisFree(c);
 					}
 				else 
 					printf("Connection error: can't allocate redis context\n");
-				}
-
+			}
 		}
-
-
-
+	}
 }
 
 //------------------------------------------------------------------------
