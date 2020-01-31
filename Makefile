@@ -20,8 +20,7 @@ CDEBUG = -g
 LIBS = -L/usr/lib -L /lib
 CFLAGS =   $(DEFS) $(LIBS) $(CDEBUG) -I. -I$(srcdir) -fPIC -O2 -DNETSNMP_ENABLE_IPV6 -fno-strict-aliasing -DNETSNMP_REMOVE_U64 -g -O2 -Ulinux -Dlinux=linux -I. -I/usr/local/include
 CPPFLAGS = $(CDEBUG) -I.  $(WARNING) 
-LDFLAGS = -L/usr/local/lib -lpthread -lmysqlclient -lutil   -lnetsnmp -lcrypto -lm
-
+LDFLAGS = -L/usr/local/lib -lpthread -lmysqlclient -lutil   -lnetsnmp -lcrypto -lm -lhiredis
 
 
 binaries := trafficSNMP

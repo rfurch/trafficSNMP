@@ -44,6 +44,8 @@
 
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
+#include </usr/local/include/hiredis/hiredis.h>
+
 
 #include "ifaceData.h"                                                                                                     
 #include "shm_q.h"
@@ -73,6 +75,8 @@ devicesShm 		*_shmDevicesArea = NULL;
 interfacesShm	*_shmInterfacesArea = NULL; 
 void 			*_queueInterfaces = NULL;	
 void 			*_queueDevices = NULL;	
+void 			*_queueRedis = NULL;	
+void 			*_queueInfluxDB = NULL;	
 
 int 			_deviceToCheck = -1;  // set to verify SNMP info from specific device
 
@@ -385,8 +389,6 @@ static time_t		old_db_time=0;
 time_t				current_time=0;
 int 				comm_error=0;
 
-old_db_time = current_time = time(NULL);
-
 while(1) {
 
 	if (_verbose > 3) 
@@ -419,6 +421,115 @@ while(1) {
 	fflush(stdout);
 	sleep (1);
 	}
+}
+
+//------------------------------------------------------------------------
+
+// worker to send data to InfluxDB 
+
+void workerInfluxDB()  {
+
+interfaceData		ifaceData;
+//static time_t		old_db_time=0;
+//time_t				current_time=0;
+
+//old_db_time = current_time = time(NULL);
+
+if (_verbose > 1) {
+	printf("\n Worker %i (InfluxDB) start!", getpid());
+	fflush(stdout);
+	}	
+
+while(1) {
+
+	// send interface (traffic)  data to DB	
+	while (shmQueueGet(_queueInfluxDB, &ifaceData) == 1) {
+
+
+	}
+
+
+
+	fflush(stdout);
+	sleep (1);
+	}
+}
+
+//------------------------------------------------------------------------
+
+// worker to send data to redis 
+
+void workerRedis()  {
+
+interfaceData		ifaceData;
+redisContext 		*c = NULL;
+redisReply 			*reply = NULL;
+static time_t		old_db_time=0;
+time_t				current_time=0;
+int 				comm_error=0;
+char 				myStr[3000];    
+
+old_db_time = current_time = time(NULL);
+
+if (_verbose > 1) {
+	printf("\n Worker %i (redis) start!", getpid());
+	fflush(stdout);
+	}	
+
+// connect to redis. In case of failure we will attempt later
+struct timeval timeout = { 1, 500000 }; // 1.5 seconds
+c = redisConnectUnixWithTimeout("127.0.0.1", timeout);
+
+    if (c == NULL || c->err) {
+        if (c) {
+            printf("Connection error: %s\n", c->errstr);
+            redisFree(c);
+			}
+		else 
+            printf("Connection error: can't allocate redis context\n");
+    	}
+
+while(1) {
+
+	// send interface (traffic)  data to DB	
+	while (shmQueueGet(_queueRedis, &ifaceData) == 1) {
+		//  set in memory HASH 
+		sprintf(myStr, "HSET devices_bw:%i 'json' '{\"name\":\"%s\",\"descr\":\"%s\",\"ibw\":%.2f,\"obw\":%.2f,\"file\":\"%s\"}'  'name' '%s' 'descr' '%s' 'ibw' '%.2f' 'obw' '%.2f' ", ifaceData.interfaceId, ifaceData.name, ifaceData.description, ifaceData.ibw_a, ifaceData.obw_a, ifaceData.file_var_name ,ifaceData.name, ifaceData.description, ifaceData.ibw_a, ifaceData.obw_a);
+        reply = redisCommand(c, myStr);
+        freeReplyObject(reply);
+
+		// reccord also in a SET (kinf of index)
+        reply = redisCommand(c, "SADD devices_bw %i", ifaceData.interfaceId );
+        freeReplyObject(reply);
+		}
+
+	fflush(stdout);
+	sleep (1);
+	}
+
+
+    // preventive disconnection from DB
+    if ( ((current_time = time(NULL)) > (old_db_time + 300)) || comm_error ) {
+  		old_db_time = current_time;
+		// Disconnects and frees the context 
+    	redisFree(c);	  
+
+		struct timeval timeout = { 1, 500000 }; // 1.5 seconds
+		c = redisConnectUnixWithTimeout("127.0.0.1", timeout);
+
+			if (c == NULL || c->err) {
+				if (c) {
+					printf("Connection error: %s\n", c->errstr);
+					redisFree(c);
+					}
+				else 
+					printf("Connection error: can't allocate redis context\n");
+				}
+
+		}
+
+
+
 }
 
 //------------------------------------------------------------------------
@@ -518,10 +629,15 @@ while (1) {
 							if ( _to_memdb )
 								shmQueuePut(_queueInterfaces, (void *)&(_shmInterfacesArea->d[iface]));	
 
+							// send data to influxDB.  Other process will take care, to avoid blocking...
+							shmQueuePut(_queueInfluxDB, (void *)&(_shmInterfacesArea->d[iface]));	
+
+							// send data to REDIS.  Other process will take care, to avoid blocking...
+							shmQueuePut(_queueRedis, (void *)&(_shmInterfacesArea->d[iface]));
+
 							// detect traffic counters change of at least ONE interface for this device
 							if (_shmInterfacesArea->d[iface].obytes_prev != _shmInterfacesArea->d[iface].obytes || _shmInterfacesArea->d[iface].ibytes_prev != _shmInterfacesArea->d[iface].ibytes ) 
 								snmpCaptureOk = 1;
-
 							}
 						}
 					}	
@@ -584,6 +700,33 @@ for ( i=0 ; i < workers ; i++ )  {
 	}  
 }
 
+// extra worker for REDIS cache data sending 
+if ( (workerPID = fork()) > 0 )  {    // parent (this process)
+	}
+else if(workerPID == 0)  {    // worker
+	prctl(PR_SET_PDEATHSIG, SIGTERM); // every child will receive SIGTERM in case parent ends
+	workerRedis();
+	}
+else {
+	printf ("\n\n\n FORK ERROR !!!");
+	fflush(stdout);
+	exit(-1);
+	}
+ 
+// extra worker for INFLUXDB  data sending 
+if ( (workerPID = fork()) > 0 )  {    // parent (this process)
+	}
+else if(workerPID == 0)  {    // worker
+	prctl(PR_SET_PDEATHSIG, SIGTERM); // every child will receive SIGTERM in case parent ends
+	workerInfluxDB();
+	}
+else {
+	printf ("\n\n\n FORK ERROR !!!");
+	fflush(stdout);
+	exit(-1);
+	}
+
+
 return 1;
 }
 
@@ -596,6 +739,18 @@ return 1;
 int shmInit() {
 
 pthread_mutexattr_t mattr, ifaceAttr;
+
+// create shared memory queue to senddata to REDIS Cache  
+if ( shmQueueInit(&_queueRedis, sizeof(interfaceData), MAX_SHM_QUEUE_SIZE) != 1 )   {
+    printf("\n\n ATENTION:   shmArea for _queueRedis QUEUE ERROR !  \n\n");
+    exit(EXIT_FAILURE);
+    } 
+
+// create shared memory queue to send data to InfluxDB / Grafana suite 
+if ( shmQueueInit(&_queueInfluxDB, sizeof(interfaceData), MAX_SHM_QUEUE_SIZE) != 1 )   {
+    printf("\n\n ATENTION:   shmArea for _queueInfluxDB QUEUE ERROR !  \n\n");
+    exit(EXIT_FAILURE);
+    } 
 
 // create shared memory queue  to exchange data between workers and main process  (interfaces) 
 if ( shmQueueInit(&_queueInterfaces, sizeof(interfaceData), MAX_SHM_QUEUE_SIZE) != 1 )   {
