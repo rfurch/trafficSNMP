@@ -348,10 +348,10 @@ while(1) {
 		"HSET devices_bw:%i 'json' '{\"name\":\"%s\",\"descr\":\"%b\","
 		"\"ibw\":%.2f,\"obw\":%.2f,\"ibw_a\":%.2f,\"obw_a\":%.2f,"
 		"\"ibw_b\":%.2f,\"obw_b\":%.2f,\"ibw_c\":%.2f,\"obw_c\":%.2f,"
-		"\"file\":\"%s\", \"lastICMP\":%li,  \"lastSNMP\":%li}'  'name' '%s' 'descr' '%b' "
+		"\"file\":\"%s\", \"lastICMP\":%li,  \"lastSNMP\":%li}' 'name' '%s' 'descr' '%b' "
 		"'ibw' '%.2f' 'obw' '%.2f' 'ibw_a' '%.2f' 'obw_a' '%.2f' "
 		"'ibw_b' '%.2f' 'obw_b' '%.2f' 'ibw_c' '%.2f' 'obw_c' '%.2f' ",
-		"'lastICMP' %li lastSNMP %li",
+		"'lastICMP' '%li' lastSNMP '%li'",
 		 ifaceData.interfaceId, ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
 		 ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a, 
 		 ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c, 
