@@ -187,7 +187,7 @@ db_connect();
 sprintf(query, "SELECT a.id, a.dev_id, a.enable AS enable_bw, b.enable AS enable_dev, \
    a.if_name, b.nombre, b.ip, b.adm_acc, a.file_var_name, \
    a.alarm_lo, a.prio_lo, \
-   a.description, b.getrunn, b.cli_acc, b.vendor_id, b.model_id, b.snmp \
+   a.description, b.getrunn, b.cli_acc, b.vendor_id, b.model_id, b.snmp, a.cir2 \
    FROM devices_bw a LEFT JOIN devices b \
    ON a.dev_id=b.id WHERE a.enable>0 AND b.enable>0 AND b.snmp>0 \
    ORDER BY a.dev_id;");
@@ -238,6 +238,7 @@ while ((row = mysql_fetch_row(res)) != NULL) {
     deviceAux.vendor_id = (row[14]) ? atoi(row[14]) : 0;
     deviceAux.model_id = (row[15]) ? atoi(row[15]) : 0;
 	deviceAux.snmp = (row[16]) ? atoi(row[16]) : 0;
+    ifaceAux.cir2=(row[17]) ? atoll(row[17]) : 0;
 
 	// search for device in shm
 	for (i=0, deviceFound=0 ; i<shmDev->nDevices ; i++) {
@@ -268,6 +269,7 @@ while ((row = mysql_fetch_row(res)) != NULL) {
 		if (shmInt->d[j].deviceId == ifaceAux.deviceId && shmInt->d[j].interfaceId == ifaceAux.interfaceId ) {
 			interfaceFound= 1;
 			shmInt->d[j].enable = ifaceAux.enable;
+			shmInt->d[j].cir2 = ifaceAux.cir2;
 			break;  // no need to continue on the loop
 			}
 		}
@@ -336,7 +338,7 @@ db_connect();
 sprintf(query, "SELECT a.id, a.dev_id, a.enable AS enable_bw, b.enable AS enable_dev, \
    a.if_name, b.nombre, b.ip, b.adm_acc, a.file_var_name, \
    a.alarm_lo, a.prio_lo, \
-   a.description, b.getrunn, b.cli_acc, b.vendor_id, b.model_id, b.snmp \
+   a.description, b.getrunn, b.cli_acc, b.vendor_id, b.model_id, b.snmp, a.cir2 \
    FROM devices_bw a LEFT JOIN devices b \
    ON a.dev_id=b.id WHERE a.enable>0 AND b.enable>0 AND b.id=%i \
    ORDER BY a.dev_id;", deviceId);
@@ -387,6 +389,7 @@ while ((row = mysql_fetch_row(res)) != NULL) {
     deviceAux.vendor_id = (row[14]) ? atoi(row[14]) : 0;
     deviceAux.model_id = (row[15]) ? atoi(row[15]) : 0;
 	deviceAux.snmp = (row[16]) ? atoi(row[16]) : 0;
+    ifaceAux.cir2=(row[17]) ? atoll(row[17]) : 0;
 
 	// search for device in shm
 	for (i=0, deviceFound=0 ; i<shmDev->nDevices ; i++) {
@@ -417,6 +420,7 @@ while ((row = mysql_fetch_row(res)) != NULL) {
 		if (shmInt->d[j].deviceId == ifaceAux.deviceId && shmInt->d[j].interfaceId == ifaceAux.interfaceId ) {
 			interfaceFound= 1;
 			shmInt->d[j].enable = ifaceAux.enable;
+			shmInt->d[j].cir2 = ifaceAux.cir2;
 			break;  // no need to continue on the loop
 			}
 		}

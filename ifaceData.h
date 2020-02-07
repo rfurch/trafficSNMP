@@ -7,6 +7,13 @@
  #include <pthread.h>
 #endif
 
+
+#ifndef MYSQL_INCLUDED
+ #define  MYSQL_INCLUDED
+#include <mysql/mysql.h>
+#endif
+
+
 #define			MAXBUF				200
 #define			MAXAVGBUF			10
 
@@ -136,6 +143,7 @@ typedef struct interfaceData
   short int			    exc_01_ini_h, exc_01_ini_m, exc_01_fin_h, exc_01_fin_m ;	
   short int			    exc_02_ini_h, exc_02_ini_m, exc_02_fin_h, exc_02_fin_m ;	
   char              oidIndex[200];   // OID Index for interface in IF-TABLE
+  long long int     cir2;           // commited information rate
 
   }interfaceData;
 
@@ -217,7 +225,31 @@ typedef struct  shm_area
 
     }shm_area;
 
-extern int _verbose;
+
+extern int      _verbose;
+
+extern int 			_workers;
+
+                                
+extern int 			_sample_period;
+extern int 			_reconnect_period;
+
+extern int				_speech_prio;	
+
+extern MYSQL       	*_mysql_connection_handler;
+
+extern devicesShm 		*_shmDevicesArea; 
+extern interfacesShm	*_shmInterfacesArea; 
+extern void 			*_queueInterfaces;	
+extern void 			*_queueDevices;	
+extern void 			*_queueRedis;	
+extern void 			*_queueInfluxDB;	
+
+extern char 			_ICMPSourceInterface[];
+
+extern int 			_deviceToCheck;  // set to verify SNMP info from specific device
+
+extern int 			_useSNMP;
 
 extern int             _verbose;
 extern pid_t           _grandsonPID;
@@ -229,8 +261,6 @@ extern int             _send_alarm;
 extern char            _process_name[];
 
 extern pthread_mutex_t _threadMutex;
-
-
 extern char     		  _server[];
 extern device_list		_devList;
 
@@ -280,7 +310,7 @@ char *adc_trim(char *s);
 int evalAlarm(deviceData *d, interfaceData *iface) ;
 
 // icmp.c
-int ping(char *address);
+int ping(char *address, int timeOut, long int *roundTripTime);
 
 // snmp.c
 int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstOID );
@@ -294,6 +324,16 @@ int 	snmpCheckParameters( deviceData *d, interfacesShm *shmInt );
 int snmp_disconnect( deviceData *d, int infd, int outfd );
 int snmpCollectBWInfo( deviceData *d, interfaceData *iface);
 int snmp_process( deviceData *d, int infd, int outfd, pid_t child_pid, int dev_id, int iface );
+
+
+// process.c
+int verifyDevice (int deviceId);
+int retriveBWDataFromFile(  );
+int saveToFile( interfaceData *ifs );
+int verifyDevice (int deviceId);
+
+
+
 
 //------------------------------------------------------------------------
 //------------------------------------------------------------------------

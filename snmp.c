@@ -122,7 +122,7 @@ else {
     }
 
 if ( getInOutCounters (d->snmpVersion, d->snmpCommunity, d->ip, inCounterOid, outCounterOid, &lli1,  &lli2) != 0) 
-    printf("\n ERROR getting IN / OUT counters !!! \n");
+    printf("\n ERROR getting IN / OUT counters !!!  Device: %s (%s)\n", d->name, d->ip);
 
 iface->ibytes = lli1;
 iface->obytes = lli2;

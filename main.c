@@ -78,21 +78,13 @@ void 			*_queueDevices = NULL;
 void 			*_queueRedis = NULL;	
 void 			*_queueInfluxDB = NULL;	
 
+char 			_ICMPSourceInterface[200] = "lo";
+
 int 			_deviceToCheck = -1;  // set to verify SNMP info from specific device
 
 int 			_useSNMP = 0;
 
 //------------------------------------------------------------------------                                   
-//------------------------------------------------------------------------
-
-void shmPrint(shm_area *s)  {
-printf("\n\n ---- SHM AREA -----");
-printf("\n PIDS:  Father: %i, Son: %i, grandSon: %i", s->fatherPid, s->sonPid, s->grandsonPid);
-printf("\n Input BW: %02lf  Output BW: %02lf  (prev: %02lf, %02lf) ", s->ibw, s->obw, s->ibwPrev, s->obwPrev);
-printf("\n Last Update: %li (%li seconds ago!) ", s->lastUpdate, time(NULL) - s->lastUpdate);
-printf("\n ---- END OF SHM AREA -----\n\n");
-}
-
 //------------------------------------------------------------------------
 
 void printUsage(char *prgname) //nada
@@ -104,6 +96,7 @@ printf ("Options:\n");
 printf ("  -h, --help   Print this help \n");
 printf ("  -v   Verbose mode\n");
 printf ("  -c DEVICE_ID  Check specific device (for SNMP, vars, etc) and exit. \n");
+printf ("  -b INTERFACE_NAME  Source interface for ICMP (default: lo). \n");
 printf ("  -e   send data to epics (deactivated by default) \n");
 printf ("  -H   send data to historic DB  (deactivated by default) \n");
 printf ("  -m   send data to MEMORY DB  (deactivated by default) \n");
@@ -118,172 +111,6 @@ printf ("  -w   concurrent workers (default=%i) \n", MAX_WORKERS);
 printf ("============================================================\n\n");
 fflush(stdout);
 }
-
-//------------------------------------------------------------------------
-
-// evaluate alarm conditions based on traffic (heuristic condition pending!!!)
-
-int evalAlarm(deviceData *d, interfaceData *iface)
-{
-struct tm   stm;
-
-// return to normal conditions are always evaluated, to avoid long (and unrallistic) intervals of failure
-if (  iface->alarm_status != ALARM_OK )
-	if (detect_normal_traffic_01(d, iface))
-		{
-		iface->alarm_status = ALARM_OK;
-		report_alarm(d, iface);
-		}
-
-localtime_r(&(iface->last_access.time), &stm);
-
-// EVALUATE FIRST EXCLUSION INTERVAL ONLY IF INI-FIN values have been fully specified
-if (in_interval(&stm, iface->exc_01_ini_h, iface->exc_01_ini_m, iface->exc_01_fin_h, iface->exc_01_fin_m))
-	return(1);
-
-// second exclusion interval
-if (in_interval(&stm, iface->exc_02_ini_h, iface->exc_02_ini_m, iface->exc_02_fin_h, iface->exc_02_fin_m))
-	return(1);
-
-if (iface->alarm_lo < 30)		// zero threshold means no alarm for this interface!
-  return(1);
-
-// following calculation will be only evaluated if we are not (already) in ALARM status
-if (  iface->alarm_status != ALARM_ERROR )	
-	{
-	int			CALC_IN_THR=5.0;
-	int			CALC_OUT_THR=5.0;
-	
-	double      incalc=0, outcalc=0;
-	
-	detect_low_traffic_01((iface->ibw_buf), &incalc);
-	detect_low_traffic_01((iface->obw_buf), &outcalc);
-
-	// INPUT condition:
-	if ( incalc > CALC_IN_THR && iface->ibw_buf[0] < iface->alarm_lo && iface->ibw_buf[1] < iface->alarm_lo )
-	    {
-		iface->alarm_status = ALARM_ERROR;
-		report_alarm(d, iface);
-		}
-	else if ( outcalc > CALC_OUT_THR && iface->obw_buf[0] < iface->alarm_lo && iface->obw_buf[1] < iface->alarm_lo )
-	    {
-		iface->alarm_status = ALARM_ERROR;
-		report_alarm(d, iface);
-		}
-	}
-return(1);
-}	
-
-//------------------------------------------------------------------------
-
-//
-// This routine gets las line of traffic to avoid discrepancies 
-// after restarting the process 
-
-int retriveBWDataFromFile(  )
-{
-FILE       	 	*f=NULL;
-char       		 	fname[500];
-char 				c=0;
-//char 				line[2000] = "";
-//char 				*ret=NULL;
-int 				i=0, j=0;
-interfaceData 		*ifs = NULL;
-
-for (j=0 ; j<_shmInterfacesArea->nInterfaces ; j++) {
-	
-	ifs = &(_shmInterfacesArea->d[j]);
-	if (_verbose > 3)
-		{printf("\n\n Retrieving LAST line of file:  %s", ifs->file_var_name); fflush(stdout); }
-
-	if ( strlen(ifs->file_var_name) > 0 ) {
-		sprintf(fname, "/data/bw/%s", ifs->file_var_name);
-		if  ( (f = fopen(fname, "r")) != NULL )  {
-			fseek(f, -4, SEEK_END);  // go to the end
-
-			c = fgetc(f);
-			while(c != '\n' && c != '\r' ) {
-				fseek(f, -2, SEEK_CUR);
-				c = fgetc(f);
-				}
-
-			//fseek(f, 1, SEEK_CUR);
-			//ret = fgets(line, 1000, f);
-			//printf("\n ---%s---", line);
-
-			i = fscanf(f, "%*i.%*i,%*i.%*i,%*i,%*i,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf[^\n]",
-					&(ifs->ibw), &(ifs->obw), &(ifs->ibw_a), &(ifs->obw_a),
-					&(ifs->ibw_b), &(ifs->obw_b), &(ifs->ibw_c), &(ifs->obw_c)
-					);
-			i=i;
-
-			ifs->ibw = 1000 * ifs->ibw_c ;
-			ifs->obw = 1000 * ifs->obw_c;
-			ifs->ibw_a = 1000 * ifs->ibw_c ;
-			ifs->obw_a = 1000 * ifs->obw_c;
-			ifs->ibw_b = 1000 * ifs->ibw_c ;
-			ifs->obw_b = 1000 * ifs->obw_c;
-			ifs->ibw_c = 1000 * ifs->ibw_c ;
-			ifs->obw_c = 1000 * ifs->obw_c;
-
-			//printf ("\n -- %lf %lf %lf %lf", ifs->ibw,ifs->obw, ifs->ibw_c ,ifs->obw_c);
-			//fflush(stdout);	
-
-			fclose(f);
-			}
-		}
-	}
-	
-return(1);
-}    
-
-
-//------------------------------------------------------------------------
-
-int saveToFile( interfaceData *ifs )
-{
-FILE        *f=NULL;
-char        fname[500];
-struct tm   stm;
-double      inavg=0, outavg=0;
-double      incalc=0, outcalc=0;
-
-if (_verbose > 3)
-	printf("\n\n Saving data to file:");
-
-if ( strlen(ifs->file_var_name) > 0 ) {
-	sprintf(fname, "/data/bw/%s", ifs->file_var_name);
-	if  ( (f = fopen(fname, "a")) != NULL )  {
-		localtime_r(&(ifs->last_access.time), &stm);
-
-		if (! avg_basic((ifs->ibw_buf), 0, (MAXAVGBUF-1), &inavg) )
-			inavg=0;
-
-		if (! avg_basic((ifs->obw_buf), 0, (MAXAVGBUF-1), &outavg) )
-			outavg=0;
-
-		detect_low_traffic_01((ifs->ibw_buf), &incalc);
-		detect_low_traffic_01((ifs->obw_buf), &outcalc);
-		
-		fprintf(f, "%li.%03i,%4i%02i%02i%02i%02i%02i.%03i,%lli,%lli,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%li,%li,%.4lf,%.4lf\r\n",
-				ifs->last_access.time, ifs->last_access.millitm, 
-				stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min, stm.tm_sec, 
-				ifs->last_access.millitm, 
-				ifs->ibytes, ifs->obytes, ifs->ibw/1000, ifs->obw/1000, 
-				ifs->ibw_a/1000, ifs->obw_a/1000,
-				ifs->ibw_b/1000, ifs->obw_b/1000, ifs->ibw_c/1000, ifs->obw_c/1000, 
-				inavg/1000, outavg/1000,
-				ifs->ierrors, ifs->oerrors,
-				incalc, outcalc
-				);
-		fclose(f);
-		}
-	}
-
-
-return(1);
-}    
-
 
 //------------------------------------------------------------------------
 
@@ -358,6 +185,11 @@ while ((opt = getopt_long(argc, argv, "c:s:d:r:w:ehfmvaS", longopts, 0)) != -1)
         case 'd':
 	    if(optarg)
         	strcpy(_server, optarg);
+        break;
+
+        case 'b':
+	    if(optarg)
+        	strcpy(_ICMPSourceInterface, optarg);
         break;
 
 		case 'h':
@@ -445,10 +277,7 @@ while(1) {
 	// send interface (traffic)  data to DB	
 	while (shmQueueGet(_queueInfluxDB, &ifaceData) == 1) {
 
-
 	}
-
-
 
 	fflush(stdout);
 	sleep (1);
@@ -457,7 +286,7 @@ while(1) {
 
 //------------------------------------------------------------------------
 
-// worker to send data to redis 
+// worker to send data to REDIS (mem cache) 
 
 void workerRedis()  {
 
@@ -467,7 +296,7 @@ redisReply 			*reply = NULL;
 static time_t		old_db_time=0;
 time_t				current_time=0;
 int 				comm_error=0;
-char 				myStr[3000];    
+//char 				myStr[3000];    
 
 old_db_time = current_time = time(NULL);
 
@@ -494,9 +323,47 @@ while(1) {
 	// send interface (traffic)  data to DB	
 	while (shmQueueGet(_queueRedis, &ifaceData) == 1) {
 		//  set in memory HASH 
-		sprintf(myStr, "HSET devices_bw:%i 'json' '{\"name\":\"%s\",\"descr\":\"%s\",\"ibw\":%.2f,\"obw\":%.2f,\"file\":\"%s\"}'  'name' '%s' 'descr' '%s' 'ibw' '%.2f' 'obw' '%.2f' ", ifaceData.interfaceId, ifaceData.name, ifaceData.description, ifaceData.ibw_a, ifaceData.obw_a, ifaceData.file_var_name ,ifaceData.name, ifaceData.description, ifaceData.ibw_a, ifaceData.obw_a);
-        reply = redisCommand(c, myStr);
+
+
+		/*sprintf(myStr, "HSET devices_bw:%i 'json' '{\"name\":\"%s\",\"descr\":\"%s\","
+		"\"ibw\":%.2f,\"obw\":%.2f,\"ibw_a\":%.2f,\"obw_a\":%.2f,"
+		"\"ibw_b\":%.2f,\"obw_b\":%.2f,\"ibw_c\":%.2f,\"obw_c\":%.2f,"
+		"\"file\":\"%s\"}'  'name' '%s' 'descr' '%s' "
+		"'ibw' '%.2f' 'obw' '%.2f' 'ibw_a' '%.2f' 'obw_a' '%.2f' "
+		"'ibw_b' '%.2f' 'obw_b' '%.2f' 'ibw_c' '%.2f' 'obw_c' '%.2f' ",
+		 ifaceData.interfaceId, ifaceData.name, "---", 
+		 ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a, 
+		 ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c, 
+		 ifaceData.file_var_name ,ifaceData.name, "---", 
+		 ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a, 
+		 ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c);
+
+        reply = redisCommand(c, myStr);  */
+
+		redisAppendCommand(c, 
+		"HSET devices_bw:%i 'descr' %b" , 
+		ifaceData.interfaceId, ifaceData.peername, strlen(ifaceData.peername));
+
+		redisAppendCommand(c, 
+		"HSET devices_bw:%i 'json' '{\"name\":\"%s\",\"descr\":\"%b\","
+		"\"ibw\":%.2f,\"obw\":%.2f,\"ibw_a\":%.2f,\"obw_a\":%.2f,"
+		"\"ibw_b\":%.2f,\"obw_b\":%.2f,\"ibw_c\":%.2f,\"obw_c\":%.2f,"
+		"\"file\":\"%s\"}'  'name' '%s' 'descr' '%b' "
+		"'ibw' '%.2f' 'obw' '%.2f' 'ibw_a' '%.2f' 'obw_a' '%.2f' "
+		"'ibw_b' '%.2f' 'obw_b' '%.2f' 'ibw_c' '%.2f' 'obw_c' '%.2f' ",
+		 ifaceData.interfaceId, ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
+		 ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a, 
+		 ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c, 
+		 ifaceData.file_var_name ,ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
+		 ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a, 
+		 ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c);
+
+		if (redisGetReply(c, (void *) &reply) != REDIS_OK) 
+			printf("\n --REDIS ERROR!  (%s) ",  reply->str );			
+
 		//printf("\n %s", reply->str );
+		//if ((reply->str))
+		//	printf("\n |%s|", myStr);			
         freeReplyObject(reply);
 
 		// reccord also in a SET (kinf of index)
@@ -526,6 +393,48 @@ while(1) {
 					printf("Connection error: can't allocate redis context\n");
 			}
 		}
+	}
+}
+
+
+//------------------------------------------------------------------------
+
+// pre - forked worker to check devices under error conditions 
+// common case: those devices thet were off - line at
+// process startup time, and became available later... 
+
+void workerCheckOfflineDevices()  {
+int 	devInError=0;
+int 	i=0;
+
+sleep( 60 );  
+
+
+while (1) {
+	// check for devices in ERROR condition
+	
+	pthread_mutex_lock (& (_shmDevicesArea->lock));
+	for (i=0,devInError=-1 ; i<_shmDevicesArea->nDevices ; i++) {
+		if (_shmDevicesArea->d[i].enable > 0 &&  _shmDevicesArea->d[i].snmpConfigured == 3) {
+			devInError = i;
+			break;
+			}
+		}
+	pthread_mutex_unlock (& (_shmDevicesArea->lock));
+
+	if (devInError > -1)	{ // device to check (again) can be alive now!
+		if ( ping(_shmDevicesArea->d[devInError].ip, 2000, NULL)==0 || ping(_shmDevicesArea->d[devInError].ip, 2000, NULL)==0 || ping(_shmDevicesArea->d[devInError].ip, 2000, NULL)==0  ) {
+			
+			if (_verbose > 1) {
+				printf("\n Worker workerCheckOfflineDevices: device (%s, %s) is reachable now! Set state to '0'", _shmDevicesArea->d[devInError].name, _shmDevicesArea->d[devInError].ip);
+				fflush(stdout);
+				}
+
+			_shmDevicesArea->d[devInError].snmpConfigured = 0;
+			}
+		}	
+
+	sleep (5);
 	}
 }
 
@@ -578,7 +487,7 @@ while (1) {
 			pthread_mutex_lock (& (_shmDevicesArea->lock));
 			_shmDevicesArea->d[devToInitFound].snmpConfigured = 3 ; // mark as 'ERROR' 
 			pthread_mutex_unlock (& (_shmDevicesArea->lock));
-			printf("\n Worker %i:  device (%s, %s) snmpCheckParameters ERROR!", getpid(), _shmDevicesArea->d[devToInitFound].name, _shmDevicesArea->d[devToInitFound].ip);
+			printf("\n Worker %i:  device [%i] (%s, %s) snmpCheckParameters ERROR!", getpid(), _shmDevicesArea->d[devToInitFound].deviceId, _shmDevicesArea->d[devToInitFound].name, _shmDevicesArea->d[devToInitFound].ip);
 			fflush(stdout);				
 			}
 		}
@@ -602,7 +511,7 @@ while (1) {
 
 			_shmDevicesArea->d[devToMeasureFound].lastRead = t;
 
-			if ( ping(_shmDevicesArea->d[devToMeasureFound].ip)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip)==0  ) {
+			if ( ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)==0  ) {
 			
 				if (_verbose > 1) {
 					printf("\n Worker %i collecting info via SNMP from device (%s, %s)", getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip);
@@ -663,16 +572,6 @@ while (1) {
 
 }
 
-
-//------------------------------------------------------------------------
-
-void exitfunction()
-{
-kill(_grandsonPID, SIGTERM);	
-//kill(0, SIGTERM);		// kill everyone on his group (all his children)
-exit(0);
-}
-
 //------------------------------------------------------------------------
 
 // launch children (MAX_WORKERS).
@@ -723,6 +622,18 @@ else {
 	exit(-1);
 	}
 
+// extra worker to periodically check devices reported as 'unreachable' or 'snmp error' 
+if ( (workerPID = fork()) > 0 )  {    // parent (this process)
+	}
+else if(workerPID == 0)  {    // worker
+	prctl(PR_SET_PDEATHSIG, SIGTERM); // every child will receive SIGTERM in case parent ends
+	workerCheckOfflineDevices();
+	}
+else {
+	printf ("\n\n\n FORK ERROR !!!");
+	fflush(stdout);
+	exit(-1);
+	}
 
 return 1;
 }
@@ -794,133 +705,6 @@ pthread_mutexattr_setpshared(&ifaceAttr, PTHREAD_PROCESS_SHARED);
 pthread_mutex_init(& (_shmInterfacesArea->lock), &ifaceAttr);
 
 return(1);
-}
-
-//------------------------------------------------------------------------
-
-int verifyDevice (int deviceId) {
-
-int 			i=0,j=0;
-int 			nDevices=0;
-
-if ( (nDevices = dbreadOneDevice ( _shmDevicesArea, _shmInterfacesArea,  deviceId)) < 1 ) {
-	printf("\n Device %i not present (or disabled) in devices + devices_bw...\n\n", deviceId);
-	fflush(stdout);
-	return(-1);
-}
-
-for (i=0 ; i<_shmDevicesArea->nDevices ; i++)  {
-	deviceData *d = &(_shmDevicesArea->d[i]);
-
-	printf("\n\n Device: (%i) %i -->  %s (%s) enable: %i getrun: %i cliacc: %i, vendor:%i, model: %i ifs: %i", i, d->deviceId, d->name, d->ip, d->enable, d->getrunn, d->cli_acc, d->vendor_id, d->model_id, d->nInterfaces);
-	if ( d->snmp <= 0)
-		printf("\n REMEMBER TO configure 'snmp' field in 'devices' table to 1 or 2");
-	for (j=0 ; j < _shmInterfacesArea->nInterfaces ; j++) {
-		interfaceData *ifs = &(_shmInterfacesArea->d[j]); 
-		if (d->deviceId == ifs->deviceId)	
-			printf("\n      %i:  devid: %i  ifid: %i  enable: %i  ifname: %s  fvarname: %s alarm_lo: %i  ", j, ifs->deviceId, ifs->interfaceId, ifs->enable, ifs->name, ifs->file_var_name, ifs->alarm_lo);
-		}
-	}	
-
-printf("\n\n Checking ICMP.....");	
-
-for (i=0 ; i<_shmDevicesArea->nDevices ; i++)  {
-	deviceData *d = &(_shmDevicesArea->d[i]);
-	if ( ! ( ping(d->ip)==0 || ping(d->ip)==0 || ping(d->ip)==0 ) ) {
-		printf("  NOT reachable via ICMP. Aborting test... \n\n ");
-		fflush(stdout);
-		return(-1);
-		}
-	else {	
-		printf("  OK");
-		fflush(stdout);
-		}
-	}
-
-printf("\n\n Checking SNMP community and version...");	
-fflush(stdout);
-for (i=0 ; i<_shmDevicesArea->nDevices ; i++)  {
-	deviceData *d = &(_shmDevicesArea->d[i]);
-
-	d->snmpVersion = -1;
-
-	printf("\n Testing V2, Vosto...."); fflush(stdout);
-	if ( snmpGetSysDesrc (SNMP_VERSION_2c, "Vostok3KA", d->ip, NULL) == 0 ) {
-		strcpy(d->snmpCommunity, "Vostok3KA");
-		d->snmpVersion = SNMP_VERSION_2c;
-		printf("   OK");
-		}
-	else {
-		printf("   ERROR / TIMEOUT");
-		printf("\n Testing V2, pub...."); fflush(stdout);
-		if ( snmpGetSysDesrc (SNMP_VERSION_2c, "public", d->ip, NULL) == 0 ) {
-			strcpy(d->snmpCommunity, "public");
-			d->snmpVersion = SNMP_VERSION_2c;
-			printf("   OK");
-			}
-		else {
-			printf("   ERROR / TIMEOUT");
-			printf("\n Testing V1, Vosto...."); fflush(stdout);
-			if ( snmpGetSysDesrc (SNMP_VERSION_1, "Vostok3KA", d->ip, NULL) == 0 ) {
-				strcpy(d->snmpCommunity, "Vostok3KA");
-				d->snmpVersion = SNMP_VERSION_1;
-				printf("   OK");
-				}
-			else {
-				printf("   ERROR / TIMEOUT");
-				printf("\n Testing V1, pub...."); fflush(stdout);
-				if ( snmpGetSysDesrc (SNMP_VERSION_1, "public", d->ip, NULL) == 0 ) {
-					strcpy(d->snmpCommunity, "public");
-					d->snmpVersion = SNMP_VERSION_1;
-					printf("   OK");
-					}
-				else {
-					printf("   ERROR / TIMEOUT");
-					}
-				}
-			}
-		}
-
-if (d->snmpVersion > -1) {
-	int ret = 0, iface = 0;
-
-	printf("\n Testing ifXtable ...."); fflush(stdout);
-	if ( snmpVerifyIfXTable (d, NULL ) == 0)
-		printf("   OK");
-	else 
-		printf("   Not present ....");
-
-	printf("\n Testing Interfaces ID...."); fflush(stdout);
-
-	// get interface position in IF-TABLE (1.3.6.1.2.1.2.2.1.2). In case of error we cannot continue...
-	// in case of error we also look into ifXtable  (1.3.6.1.2.1.31.1.1.1.1) 
-	if ( (ret = getIndexOfInterfaces( d, _shmInterfacesArea, "1.3.6.1.2.1.2.2.1.2")) != 0 ) {
-		if ( (ret = getIndexOfInterfaces( d, _shmInterfacesArea, "1.3.6.1.2.1.31.1.1.1.1")) != 0 ) {
-			printf("\n\n UNABLE to find some Interfaces (device *%s, %s) error returned: %i !! \n\n", d->name, d->ip, ret );
-
-			}
-		}
-
-	for (iface = 0 ; iface < _shmInterfacesArea->nInterfaces ; iface++)   {
-		if (_shmInterfacesArea->d[iface].enable > 0 && d->deviceId == _shmInterfacesArea->d[iface].deviceId) {
-//				printf("\n    Interface %s (file:%s) ", _shmInterfacesArea->d[iface].name, _shmInterfacesArea->d[iface].file_var_name);
-			printf("\n    Interface %30s ....  ", _shmInterfacesArea->d[iface].name);
-			if ( strlen(_shmInterfacesArea->d[iface].oidIndex) > 0 )
-				printf(" ok (index: %s) ", _shmInterfacesArea->d[iface].oidIndex);
-			else
-				printf(" NOT FOUND ******************** ");
-			}
-		}
-	}
-else 	
-	printf(" \n\n SNMP v1/2 configured on device ? ");
-
-}
-
-printf("\n\n");	
-fflush(stdout);	
-
-return(0);
 }
 
 //------------------------------------------------------------------------
