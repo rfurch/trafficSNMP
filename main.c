@@ -340,26 +340,26 @@ while(1) {
 
         reply = redisCommand(c, myStr);  */
 
-		redisAppendCommand(c, 
-		"HSET devices_bw:%i 'descr' %b" , 
-		ifaceData.interfaceId, ifaceData.peername, strlen(ifaceData.peername));
+	//	redisAppendCommand(c, 
+	//	"HSET devices_bw:%i 'descr' %b" , 
+	//	ifaceData.interfaceId, ifaceData.peername, strlen(ifaceData.peername));
 
-		redisAppendCommand(c, 
-		"HSET devices_bw:%i 'json' '{\"name\":\"%s\",\"descr\":\"%b\","
-		"\"ibw\":%.2f,\"obw\":%.2f,\"ibw_a\":%.2f,\"obw_a\":%.2f,"
-		"\"ibw_b\":%.2f,\"obw_b\":%.2f,\"ibw_c\":%.2f,\"obw_c\":%.2f,"
-		"\"file\":\"%s\", \"lastICMP\":%li,  \"lastSNMP\":%li}' 'name' '%s' 'descr' '%b' "
-		"'ibw' '%.2f' 'obw' '%.2f' 'ibw_a' '%.2f' 'obw_a' '%.2f' "
-		"'ibw_b' '%.2f' 'obw_b' '%.2f' 'ibw_c' '%.2f' 'obw_c' '%.2f' ",
-		"'lastICMP' '%li' 'lastSNMP' '%li'",
-		 ifaceData.interfaceId, ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
-		 ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a, 
-		 ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c, 
-		 ifaceData.file_var_name ,ifaceData.lastPingOK, ifaceData.lastSNMPOK,
-		 ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
-		 ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a, 
-		 ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c,
-		 ifaceData.lastPingOK, ifaceData.lastSNMPOK);
+        redisAppendCommand(c,
+        "HSET devices_bw:%i 'json' '{\"name\":\"%s\",\"descr\":\"%b\","
+        "\"ibw\":%.2f,\"obw\":%.2f,\"ibw_a\":%.2f,\"obw_a\":%.2f,"
+        "\"ibw_b\":%.2f,\"obw_b\":%.2f,\"ibw_c\":%.2f,\"obw_c\":%.2f,"
+        "\"file\":\"%s\",\"lastICMP\":%li,\"lastSNMP\":%li}' 'name' '%s' 'descr' '%b' "
+        "'ibw' '%.2f' 'obw' '%.2f' 'ibw_a' '%.2f' 'obw_a' '%.2f' "
+        "'ibw_b' '%.2f' 'obw_b' '%.2f' 'ibw_c' '%.2f' 'obw_c' '%.2f' "
+        "'lastICMP' '%li' 'lastSNMP' '%li'",
+         ifaceData.interfaceId, ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
+         ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a,
+         ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c,
+         ifaceData.file_var_name ,ifaceData.lastPingOK, ifaceData.lastSNMPOK,
+         ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
+         ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a,
+         ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c,
+         ifaceData.lastPingOK, ifaceData.lastSNMPOK);
 
 		if (redisGetReply(c, (void *) &reply) != REDIS_OK) 
 			printf("\n --REDIS ERROR!  (%s) ",  reply->str );			
