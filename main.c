@@ -348,15 +348,18 @@ while(1) {
 		"HSET devices_bw:%i 'json' '{\"name\":\"%s\",\"descr\":\"%b\","
 		"\"ibw\":%.2f,\"obw\":%.2f,\"ibw_a\":%.2f,\"obw_a\":%.2f,"
 		"\"ibw_b\":%.2f,\"obw_b\":%.2f,\"ibw_c\":%.2f,\"obw_c\":%.2f,"
-		"\"file\":\"%s\"}'  'name' '%s' 'descr' '%b' "
+		"\"file\":\"%s\", \"lastICMP\":%li,  \"lastSNMP\":%li}'  'name' '%s' 'descr' '%b' "
 		"'ibw' '%.2f' 'obw' '%.2f' 'ibw_a' '%.2f' 'obw_a' '%.2f' "
 		"'ibw_b' '%.2f' 'obw_b' '%.2f' 'ibw_c' '%.2f' 'obw_c' '%.2f' ",
+		"'lastICMP' %li lastSNMP %li",
 		 ifaceData.interfaceId, ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
 		 ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a, 
 		 ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c, 
-		 ifaceData.file_var_name ,ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
+		 ifaceData.file_var_name ,ifaceData.lastPingOK, ifaceData.lastSNMPOK,
+		 ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
 		 ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a, 
-		 ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c);
+		 ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c,
+		 ifaceData.lastPingOK, ifaceData.lastSNMPOK);
 
 		if (redisGetReply(c, (void *) &reply) != REDIS_OK) 
 			printf("\n --REDIS ERROR!  (%s) ",  reply->str );			
@@ -522,6 +525,10 @@ while (1) {
 				
 				for (iface = 0, snmpCaptureOk = 0 ; iface < _shmInterfacesArea->nInterfaces ; iface++)   {
 					if (_shmInterfacesArea->d[iface].enable > 0 && _shmDevicesArea->d[devToMeasureFound].deviceId == _shmInterfacesArea->d[iface].deviceId) {
+						
+						// we replicate last pint OK in interfaces, for simplicity!
+						_shmInterfacesArea->d[iface].lastPingOK = time(NULL);
+						
 						snmpCollectBWInfo( &(_shmDevicesArea->d[devToMeasureFound]), &(_shmInterfacesArea->d[iface]));
 
 						// if this is not the first iteration
@@ -542,8 +549,10 @@ while (1) {
 							shmQueuePut(_queueRedis, (void *)&(_shmInterfacesArea->d[iface]));
 
 							// detect traffic counters change of at least ONE interface for this device
-							if (_shmInterfacesArea->d[iface].obytes_prev != _shmInterfacesArea->d[iface].obytes || _shmInterfacesArea->d[iface].ibytes_prev != _shmInterfacesArea->d[iface].ibytes ) 
+							if (_shmInterfacesArea->d[iface].obytes_prev != _shmInterfacesArea->d[iface].obytes || _shmInterfacesArea->d[iface].ibytes_prev != _shmInterfacesArea->d[iface].ibytes )  {
+								_shmInterfacesArea->d[iface].lastSNMPOK = time(NULL);
 								snmpCaptureOk = 1;
+								}
 							}
 						}
 					}	
@@ -569,7 +578,6 @@ while (1) {
 
 	sleep (1);
 	}
-
 }
 
 //------------------------------------------------------------------------

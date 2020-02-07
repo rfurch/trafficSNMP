@@ -145,6 +145,9 @@ typedef struct interfaceData
   char              oidIndex[200];   // OID Index for interface in IF-TABLE
   long long int     cir2;           // commited information rate
 
+  time_t          lastPingOK;     // for simplicity we repeat this values at interface level, sorry!
+  time_t          lastSNMPOK;     // these two are actually related to a device....
+
   }interfaceData;
 
 // structure to store device properties
