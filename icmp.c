@@ -123,8 +123,6 @@ len+=sizeof(device);
 memmove(p + len, myString, sizeof(myString));
 len+=sizeof(myString);
 
-printf("\n sizeof device: %li \n", sizeof(device));
-
 icmp->icmp_cksum = 0;
 icmp->icmp_cksum = in_cksum((u_short *) icmp, sizeof(icmp) + len);
 if (totalLen)
@@ -212,7 +210,7 @@ unsigned long           triptime=0;
 
 gettimeofday(&tv, NULL);
 
-printf("\n\n tv: %li %li    tp: %li %li", tv.tv_sec, tv.tv_usec, tp->tv_sec, tp->tv_usec);
+//printf("\n\n tv: %li %li    tp: %li %li", tv.tv_sec, tv.tv_usec, tp->tv_sec, tp->tv_usec);
 
 if ((tv.tv_usec -= tp->tv_usec) < 0) {
     --tv.tv_sec;
