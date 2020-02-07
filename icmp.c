@@ -193,7 +193,7 @@ addr = &destinationAddress;
 if ( buildICMP(buffer, &len, getpid(), sequence, M1, M2, M3, M4) != 0)
     return(-1);
  
-printBuffer(buffer, len);
+//printBuffer(buffer, len);
 if (sendto(socketICMP, buffer, len, 0, (struct sockaddr *)addr, sizeof(*addr)) <= 0) {
     perror("sendto");
     return(-2);
