@@ -540,13 +540,16 @@ while (1) {
 
 							// if we need to send data to DB, we will use SHM queue (parent will perform DB operation)	
 							if ( _to_memdb )
-								shmQueuePut(_queueInterfaces, (void *)&(_shmInterfacesArea->d[iface]));	
+								if ( shmQueuePut(_queueInterfaces, (void *)&(_shmInterfacesArea->d[iface])) != 1 )
+									fprintf(stderr, "\n ERROR on _queueInterfaces  ! ");
 
 							// send data to influxDB.  Other process will take care, to avoid blocking...
-							shmQueuePut(_queueInfluxDB, (void *)&(_shmInterfacesArea->d[iface]));	
+							if ( shmQueuePut(_queueInfluxDB, (void *)&(_shmInterfacesArea->d[iface])) != 1 ) 	
+									fprintf(stderr, "\n ERROR on _queueInfluxDB  ! ");
 
 							// send data to REDIS.  Other process will take care, to avoid blocking...
-							shmQueuePut(_queueRedis, (void *)&(_shmInterfacesArea->d[iface]));
+							if ( shmQueuePut(_queueRedis, (void *)&(_shmInterfacesArea->d[iface])) != 1 )
+									fprintf(stderr, "\n ERROR on _queueRedis  ! ");
 
 							// detect traffic counters change of at least ONE interface for this device
 							if (_shmInterfacesArea->d[iface].obytes_prev != _shmInterfacesArea->d[iface].obytes || _shmInterfacesArea->d[iface].ibytes_prev != _shmInterfacesArea->d[iface].ibytes )  {
@@ -563,7 +566,8 @@ while (1) {
 
 					//printf("\n Pongo %li en dev %i", _shmDevicesArea->d[devToMeasureFound].lastPingOK , _shmDevicesArea->d[devToMeasureFound].deviceId)		;
 					//fflush(stdout);
-					shmQueuePut(_queueDevices, (void *)&(_shmDevicesArea->d[devToMeasureFound]));	
+					if ( shmQueuePut(_queueDevices, (void *)&(_shmDevicesArea->d[devToMeasureFound])) != 1 )	 
+						fprintf(stderr, "\n ERROR on _queueDevices  ! ");
 					}
 				pthread_mutex_unlock (& (_shmDevicesArea->lock));						
 				}

@@ -156,6 +156,8 @@ setsockopt(*s, SOL_SOCKET, SO_RCVBUF, (char *) &sockopt, sizeof(sockopt));
 val = 255;
 if (setsockopt(*s, SOL_IP, IP_TTL, &val, sizeof(val)) != 0)    {
     perror("Set TTL option");
+    if (*s)  
+        close(*s);
     return -2;
     }
         
@@ -312,52 +314,64 @@ return(-1);
 // RTT in milliseconds will be stored in case of success 
 
 int ping(char *address, int timeOut, long int *roundTripTime) {
-int                 counter = 0;
+//int                 counter = 0;
 int                 localSocket = 0;
 fd_set              rfds;
 struct timeval      tv;
-int                 retval=0, receiveLen=0;
+int                 auxErr=0, retVal = -9, receiveLen=0;
 int                 device = 9;
 char                receiveBuffer[MAXLLEN];
+int                 sockErr=0;
 
 // build socket. for sanity close and re - create RAW socket. It Works for first time too...
-if ( --counter  <= 0 ) {
-    counter=1000;
-    if ( buildSocket( & localSocket ) != 0 )  {
-        fprintf(stderr, "\n\nERROR creating SOCKET: are you root? \n\n");
-        fflush(stderr);
-        return(-3); 
-        }
-    }   
+//if ( --counter  <= 0 ) {
+//    counter=1000;
+//    if ( (sockErr = buildSocket( & localSocket )) != 0 )  {
+//        fprintf(stderr, "\n\nERROR creating SOCKET (%i): are you root? \n\n", sockErr);
+//        fflush(stderr);
+//        return(-3); 
+//        }
+//    }   
 
-// whatch or socket, read and write conditions
-FD_ZERO(&rfds);   FD_SET(localSocket, &rfds);
+if ( (sockErr = buildSocket( & localSocket )) != 0 )  {
+    fprintf(stderr, "\n\nERROR creating SOCKET (%i): are you root? \n\n", sockErr);
+    fflush(stderr);
+    retVal = -1; 
+    }
+else {    
+    // whatch or socket, read and write conditions
+    FD_ZERO(&rfds);   FD_SET(localSocket, &rfds);
 
-// Wait for timeout
-tv.tv_sec = timeOut / 1000;  tv.tv_usec = timeOut % 1000;
+    // Wait for timeout
+    tv.tv_sec = timeOut / 1000;  tv.tv_usec = timeOut % 1000;
 
-if ( sendICMP(localSocket, address, device) == 0 ) {
-    retval = select(1 + localSocket, &rfds, NULL, NULL, &tv);
-    if (retval == -1)
-        perror("select()");
-    else if (retval)   {
-        if (FD_ISSET(localSocket, &rfds))   {
-            if (receiveICMP(localSocket, receiveBuffer, &receiveLen) == 0) 
-                if (validateICMP(address, receiveBuffer, receiveLen, device, roundTripTime) == 0)
-                    return(0);
+    if ( sendICMP(localSocket, address, device) == 0 ) {
+        auxErr = select(1 + localSocket, &rfds, NULL, NULL, &tv);
+        if (auxErr == -1) {
+            perror("select()");
+            retVal = -2;
             }
-        }
-    else        // timeout
-        return (-2);        
-    }    
-    return(-1);
+        else if (auxErr)   {
+            if (FD_ISSET(localSocket, &rfds))   {
+                if (receiveICMP(localSocket, receiveBuffer, &receiveLen) == 0) {
+                    if (validateICMP(address, receiveBuffer, receiveLen, device, roundTripTime) == 0)
+                        retVal = 0;         // this is the ONLY correct path
+                    else 
+                        retVal = -3;    // validate error
+                    }
+                }
+            }
+        else        
+            retVal = -2;  //  timeout error 
+        }    
+    }
+if (localSocket)  
+    close(localSocket);
+
+return(retVal);
 }
 
 //--------------------------------------------------------------------
-
-
-
-
 
 //// EXTRAS
 /*
