@@ -515,7 +515,7 @@ while (1) {
 
 			_shmDevicesArea->d[devToMeasureFound].lastRead = t;
 
-			if ( (pingRet1 = ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)) == 0 || 
+			if ( 1 || (pingRet1 = ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)) == 0 || 
 				(pingRet2 = ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)) == 0 || 
 				(pingRet3 = ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)) ==0  ) {
 			
