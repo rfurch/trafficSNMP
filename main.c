@@ -450,6 +450,7 @@ int 	i=0, iface=0;
 int 	devToInitFound=0;
 int 	devToMeasureFound=0;
 time_t	t=0;
+int 	pingRet1=-20, pingRet2=-20, pingRet3=-20;
 int 	snmpCaptureOk=0;   // flag to detect changes un traffic counters as 'valid reading' 
 
 sleep(rand()%20);  
@@ -514,7 +515,9 @@ while (1) {
 
 			_shmDevicesArea->d[devToMeasureFound].lastRead = t;
 
-			if ( ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)==0 || ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)==0  ) {
+			if ( (pingRet1 = ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)) == 0 || 
+				(pingRet2 = ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)) == 0 || 
+				(pingRet3 = ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)) ==0  ) {
 			
 				if (_verbose > 1) {
 					printf("\n Worker %i collecting info via SNMP from device (%s, %s)", getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip);
@@ -573,7 +576,9 @@ while (1) {
 				}
 			else {	
 				if (_verbose > 1) {
-					printf("\n Worker %i device (%s, %s) NOT reachable via ICMP: No data collection...", getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip);
+					printf("\n Worker %i device (%s, %s) NOT reachable via ICMP (Err: %i, %i,%i): No data collection...", 
+					  getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip,
+					  pingRet1, pingRet2, pingRet3);
 					fflush(stdout);
 					}
 				}

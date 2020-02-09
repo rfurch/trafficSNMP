@@ -118,7 +118,7 @@ char       		 	fname[500];
 char 				c=0;
 //char 				line[2000] = "";
 //char 				*ret=NULL;
-int 				i=0, j=0;
+int 				i=0, j=0, counter=0;
 interfaceData 		*ifs = NULL;
 
 for (j=0 ; j<_shmInterfacesArea->nInterfaces ; j++) {
@@ -133,10 +133,17 @@ for (j=0 ; j<_shmInterfacesArea->nInterfaces ; j++) {
 			fseek(f, -4, SEEK_END);  // go to the end
 
 			c = fgetc(f);
-			while(c != '\n' && c != '\r' ) {
+			counter = 0;
+			while(c != '\n' && c != '\r' && ++counter < 2000) {
 				fseek(f, -2, SEEK_CUR);
 				c = fgetc(f);
 				}
+
+			if (c != '\n' && c != '\r')	{
+				fprintf(stderr, "\n\n UNABLE to Retrieve LAST line of file:  %s", ifs->file_var_name);
+				continue;
+			}
+
 
 			//fseek(f, 1, SEEK_CUR);
 			//ret = fgets(line, 1000, f);
@@ -162,9 +169,12 @@ for (j=0 ; j<_shmInterfacesArea->nInterfaces ; j++) {
 
 			fclose(f);
 			}
+		else  {
+			fprintf(stderr, "\n\n UNABLE to Retrieve data from file:  %s", ifs->file_var_name);
+			}
 		}
 	}
-	
+
 return(1);
 }    
 
