@@ -399,6 +399,33 @@ while(1) {
 	}
 }
 
+//------------------------------------------------------------------------
+
+// pre - forked worker to SEND ICMP (bulk, flooding ICMP)
+
+void workerSendICMP()  {
+
+sleep( 5 );  
+
+while (1) {
+	sendMultiPing(_shmDevicesArea);
+	sleep (5);
+	}
+}
+
+//------------------------------------------------------------------------
+
+// pre - forked worker to Receive ICMP REPLY and update DEVICES
+
+void workerReceiveICMP()  {
+
+sleep( 3 );  
+
+while (1) {
+	receiveMultiPing(_shmDevicesArea, _shmInterfacesArea);
+	sleep (5);
+	}
+}
 
 //------------------------------------------------------------------------
 
@@ -411,7 +438,6 @@ int 	devInError=0;
 int 	i=0;
 
 sleep( 60 );  
-
 
 while (1) {
 	// check for devices in ERROR condition
@@ -426,8 +452,7 @@ while (1) {
 	pthread_mutex_unlock (& (_shmDevicesArea->lock));
 
 	if (devInError > -1)	{ // device to check (again) can be alive now!
-		if ( ping(_shmDevicesArea->d[devInError].ip, 2000, NULL)==0 || ping(_shmDevicesArea->d[devInError].ip, 2000, NULL)==0 || ping(_shmDevicesArea->d[devInError].ip, 2000, NULL)==0  ) {
-			
+		if ( (time(NULL) - _shmDevicesArea->d[devInError].lastPingOK) < 100 ) {
 			if (_verbose > 1) {
 				printf("\n Worker workerCheckOfflineDevices: device (%s, %s) is reachable now! Set state to '0'", _shmDevicesArea->d[devInError].name, _shmDevicesArea->d[devInError].ip);
 				fflush(stdout);
@@ -435,7 +460,7 @@ while (1) {
 
 			_shmDevicesArea->d[devInError].snmpConfigured = 0;
 			}
-		}	
+		}
 
 	sleep (5);
 	}
@@ -450,10 +475,9 @@ int 	i=0, iface=0;
 int 	devToInitFound=0;
 int 	devToMeasureFound=0;
 time_t	t=0;
-int 	pingRet1=-20, pingRet2=-20, pingRet3=-20;
 int 	snmpCaptureOk=0;   // flag to detect changes un traffic counters as 'valid reading' 
 
-sleep(rand()%20);  
+sleep(10 + rand()%20);  
 
 if (_verbose > 1) {
 	printf("\n Worker %i start!", getpid());
@@ -515,23 +539,16 @@ while (1) {
 
 			_shmDevicesArea->d[devToMeasureFound].lastRead = t;
 
-			if ( 1 || (pingRet1 = ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)) == 0 || 
-				(pingRet2 = ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)) == 0 || 
-				(pingRet3 = ping(_shmDevicesArea->d[devToMeasureFound].ip, 2000, NULL)) ==0  ) {
-			
+			if ( (time(NULL) - _shmDevicesArea->d[devToMeasureFound].lastPingOK) < 100 ) {
+
 				if (_verbose > 1) {
 					printf("\n Worker %i collecting info via SNMP from device (%s, %s)", getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip);
 					fflush(stdout);
 					}
-
-				_shmDevicesArea->d[devToMeasureFound].lastPingOK = time(NULL);
 				
 				for (iface = 0, snmpCaptureOk = 0 ; iface < _shmInterfacesArea->nInterfaces ; iface++)   {
 					if (_shmInterfacesArea->d[iface].enable > 0 && _shmDevicesArea->d[devToMeasureFound].deviceId == _shmInterfacesArea->d[iface].deviceId) {
-						
-						// we replicate last pint OK in interfaces, for simplicity!
-						_shmInterfacesArea->d[iface].lastPingOK = time(NULL);
-						
+												
 						snmpCollectBWInfo( &(_shmDevicesArea->d[devToMeasureFound]), &(_shmInterfacesArea->d[iface]));
 
 						// if this is not the first iteration
@@ -576,9 +593,8 @@ while (1) {
 				}
 			else {	
 				if (_verbose > 1) {
-					printf("\n Worker %i device (%s, %s) NOT reachable via ICMP (Err: %i, %i,%i): No data collection...", 
-					  getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip,
-					  pingRet1, pingRet2, pingRet3);
+					printf("\n Worker %i device (%s, %s) NOT reachable via ICMP: No data collection...", 
+					  getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip);
 					fflush(stdout);
 					}
 				}
@@ -648,6 +664,33 @@ else if(workerPID == 0)  {    // worker
 	}
 else {
 	printf ("\n\n\n FORK ERROR !!!");
+	fflush(stdout);
+	exit(-1);
+	}
+
+// extra worker to SEND ICMP
+if ( (workerPID = fork()) > 0 )  {    // parent (this process)
+	}
+else if(workerPID == 0)  {    // worker
+	prctl(PR_SET_PDEATHSIG, SIGTERM); // every child will receive SIGTERM in case parent ends
+	workerSendICMP();
+	}
+else {
+	printf ("\n\n\n FORK ERROR  (workerSendICMP)!!!");
+	fflush(stdout);
+	exit(-1);
+	}
+
+
+// extra worker to RECEIVE ICMP
+if ( (workerPID = fork()) > 0 )  {    // parent (this process)
+	}
+else if(workerPID == 0)  {    // worker
+	prctl(PR_SET_PDEATHSIG, SIGTERM); // every child will receive SIGTERM in case parent ends
+	workerReceiveICMP();
+	}
+else {
+	printf ("\n\n\n FORK ERROR  (workerReceiveICMP)!!!");
 	fflush(stdout);
 	exit(-1);
 	}

@@ -145,8 +145,9 @@ typedef struct interfaceData
   char              oidIndex[200];   // OID Index for interface in IF-TABLE
   long long int     cir2;           // commited information rate
 
-  time_t          lastPingOK;     // for simplicity we repeat this values at interface level, sorry!
-  time_t          lastSNMPOK;     // these two are actually related to a device....
+  time_t            lastPingOK;     // for simplicity we repeat this values at interface level, sorry!
+  time_t            lastSNMPOK;     // these two are actually related to a device....
+  time_t            lastPingRTT;    // in mseconds
 
   }interfaceData;
 
@@ -160,11 +161,13 @@ typedef struct deviceData
   char 		      	access_type;			// 0: none, 1: telnet, 2:ssh
   char 			      name[MAXBUF];
   char 			      ip[MAXBUF];
+  uint32_t        ipAddr32;   // uni32 IPv4 represetation for fast comparison
   char 			      hostname[MAXBUF];
   char 			      ena_prompt[MAXBUF];
   char 			      dis_prompt[MAXBUF];
   time_t      		lastRead;
   time_t          lastPingOK;
+  time_t          lastPingRTT;    // in mseconds
   time_t          lastSNMPOK;
   int 			      nInterfaces;
   interfaceData		*ifs;	
@@ -270,11 +273,13 @@ extern device_list		_devList;
 
 
 // util.c
+int uint32ipv4ToStr (u_int32_t addr, char *strAddr, int size) ;
+int getIpAsString (struct sockaddr *addr, char *strAddr);
 void remove_spaces (char* restrict str_trimmed, const char* restrict str_untrimmed);
 int randomDelay(int min, int max);
-char *adc_ltrim(char *s);
-char *adc_rtrim(char *s);
-char *adc_trim(char *s);
+char *ltrim(char *s);
+char *rtrim(char *s);
+char *trim(char *s);
 int str_firstchar(char *s);
 int str_extract(char *s, int n1, int n2, char *ret);
 int get_hostname(char *buffer_aux, char *hostname_str);
@@ -314,6 +319,8 @@ int evalAlarm(deviceData *d, interfaceData *iface) ;
 
 // icmp.c
 int ping(char *address, int timeOut, long int *roundTripTime);
+int sendMultiPing(devicesShm *devicesList);
+int 	receiveMultiPing(devicesShm *devicesList, interfacesShm *interfacesList);
 
 // snmp.c
 int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstOID );

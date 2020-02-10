@@ -33,6 +33,31 @@
 
 //------------------------------------------------------------------------
 
+char *ltrim(char *s)  {
+    if (!s) return(NULL);
+    while(isspace(*s)) 
+        s++;
+    return s;
+}
+
+//------------------------------------------------------------------------
+
+char *rtrim(char *s) {
+    char* back = s + strlen(s);
+    if (!s) return(NULL);
+    while(isspace(*--back));
+    *(back+1) = '\0';
+    return s;
+}
+
+//------------------------------------------------------------------------
+
+char *trim(char *s)  {
+    return rtrim(ltrim(s)); 
+}
+
+//------------------------------------------------------------------------
+
 void remove_spaces (char* restrict str_trimmed, const char* restrict str_untrimmed)
 {
   while (*str_untrimmed != '\0')
@@ -45,6 +70,65 @@ void remove_spaces (char* restrict str_trimmed, const char* restrict str_untrimm
     str_untrimmed++;
   }
   *str_trimmed = '\0';
+}
+
+//------------------------------------------------------------------------
+
+
+//#include <netinet/in.h>
+//
+//struct sockaddr_in {
+//    short            sin_family;   // e.g. AF_INET
+//    unsigned short   sin_port;     // e.g. htons(3490)
+//    struct in_addr   sin_addr;     // see struct in_addr, below
+//    char             sin_zero[8];  // zero this if you want to
+//};
+//
+//struct in_addr {
+//    unsigned long s_addr;  // load with inet_aton()
+//};
+
+
+int getIpAsString (struct sockaddr *addr, char *strAddr)  {
+
+if (!strAddr)
+    return(-1);
+
+switch(addr->sa_family) {
+    case AF_INET: {
+        struct sockaddr_in *addr_in = (struct sockaddr_in *)addr;
+        inet_ntop(AF_INET, &(addr_in->sin_addr), strAddr, INET_ADDRSTRLEN);
+        break;
+        }
+    case AF_INET6: {
+        struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *)addr;
+        inet_ntop(AF_INET6, &(addr_in6->sin6_addr), strAddr, INET6_ADDRSTRLEN);
+        break;
+        }
+    default:
+        break;
+    }    
+
+return(0);
+}
+
+//------------------------------------------------------------------------
+
+// returns printable IPv4 string from 32 bit repesetation
+//  addr:  32 bits IPv4
+//  strAddr:  destination string, must not be null
+//  size: max len of strAddr
+int uint32ipv4ToStr (u_int32_t addr, char *strAddr, int size)  {
+struct in_addr sInAddr;
+
+if (!strAddr)
+    return(-1);
+sInAddr.s_addr = addr;
+
+if (inet_ntop(AF_INET, &(sInAddr), strAddr, size))
+    return(0);
+
+return(1);
 }
 
 //------------------------------------------------------------------------
@@ -69,31 +153,6 @@ int randomDelay(int min, int max) {
     sleep(randomDelay);
 
     return(1);
-}
-
-//------------------------------------------------------------------------
-
-char *adc_ltrim(char *s)
-{
-    while(isspace(*s)) s++;
-    return s;
-}
-
-//------------------------------------------------------------------------
-
-char *adc_rtrim(char *s)
-{
-    char* back = s + strlen(s);
-    while(isspace(*--back));
-    *(back+1) = '\0';
-    return s;
-}
-
-//------------------------------------------------------------------------
-
-char *adc_trim(char *s)
-{
-    return (adc_rtrim(adc_ltrim(s))); 
 }
 
 //------------------------------------------------------------------------

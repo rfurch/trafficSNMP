@@ -19,7 +19,7 @@
 
 #include <netinet/in_systm.h>
 
-#pragma pack (1)
+//#pragma pack (1)   // WARNING:  this MUST be set  in ALL modules (if required)
 
 #include "ifaceData.h"
 
@@ -30,7 +30,6 @@
 #define         M1              111
 #define         M2              23
 #define         M3              7
-#define         M4              81
 
 // basic ICMP packet with data (payload)
 
@@ -190,7 +189,7 @@ destinationAddress.sin_addr.s_addr = *(long *)(hname->h_addr);
 
 addr = &destinationAddress;  
 
-if ( buildICMP(buffer, &len, getpid(), sequence, M1, M2, M3, M4) != 0)
+if ( buildICMP(buffer, &len, getpid(), sequence, M1, M2, M3, device) != 0)
     return(-1);
  
 //printBuffer(buffer, len);
@@ -261,6 +260,7 @@ int  validateICMP(char *address, char *receiveBuffer, int len, int device, long 
 struct icmp             *icmpPacket;
 struct iphdr            *iphdr;
 int                     ipv4HeaderLen=0;
+int                     recvDev=0;
 char                    *p = NULL;
 
 if (!address || !receiveBuffer)
@@ -274,7 +274,7 @@ p = (char *) &(icmpPacket->icmp_data);
 // verify received data
 if (iphdr->saddr == inet_addr(address)) {       // src IP match
     if ( icmpPacket->icmp_id == getpid() )  {    // ID (pid) matches...
-        int m1=0, m2=0, m3=0, m4=0, len=0;
+        int m1=0, m2=0, m3=0, len=0;
 
         len+=sizeof(struct timeval);
         memmove(&m1, p + len, sizeof(m1));
@@ -283,10 +283,10 @@ if (iphdr->saddr == inet_addr(address)) {       // src IP match
         len += sizeof(m2);
         memmove(&m3, p + len, sizeof(m3));
         len += sizeof(m3);
-        memmove(&m4, p + len, sizeof(m4));
-        len += sizeof(m4);
+        memmove(&recvDev, p + len, sizeof(recvDev));
+        len += sizeof(device);
 
-        if (m1 == M1 && m2 == M2 && m3 == M3 && m4 == M4)  {
+        if (m1 == M1 && m2 == M2 && m3 == M3 && recvDev == device)  {
 
             if (tripTime)
                 *tripTime = getTripTime( (struct timeval *) &(icmpPacket->icmp_data) );
@@ -373,6 +373,158 @@ return(retVal);
 
 //--------------------------------------------------------------------
 
+// Send ICMP request to every DEVICE, 
+// this routine does not wait for REPLY
+// receive specific field (DEVICE, int32)
+// to verify later received packers BY IP and DEVICE 
+
+int sendMultiPing(devicesShm *devList) {
+int                 localSocket = 0;
+int                 retVal = 0;
+int                 sockErr=0, i=0;
+int                 interDelay = 0, numDev = 0;
+
+numDev = (devList->nDevices > 100) ? devList->nDevices : 100;
+interDelay = 3000000 / numDev;
+
+if ( (sockErr = buildSocket( & localSocket )) != 0 )  {
+    fprintf(stderr, "\n\nERROR creating SOCKET (%i): are you root? \n\n", sockErr);    fflush(stderr);
+    retVal = -1; 
+    }
+
+//pthread_mutex_lock (& (devicesList->lock));
+for ( i=0 ; i<devList->nDevices ; i++ )  {
+    sendICMP(localSocket, devList->d[i].ip , devList->d[i].deviceId);
+    usleep(interDelay);
+    }
+//pthread_mutex_unlock (& (devicesList->lock));
+
+if (localSocket)  
+    close(localSocket);
+
+return(retVal);
+}
+
+//--------------------------------------------------------------------
+
+// parses ICMP reception buffer, detects valid ICMP Replys 
+// and updates DEVICES an INTERFACES "last Ping OK" info
+
+int 	validateAndUpdateDevices(char *receiveBuffer, int len, devicesShm *devicesList, interfacesShm *interfacesList) {
+int                     retVal = 0 ;
+struct icmp             *icmpPacket;
+struct iphdr            *iphdr;
+int                     ipv4HeaderLen=0;
+char                    *p = NULL;
+int                     m1=0, m2=0, m3=0, device=0, i=0, j=0;
+
+if (!receiveBuffer)
+    return(-1);
+
+iphdr = (struct iphdr *)((char *) receiveBuffer);
+ipv4HeaderLen = iphdr->ihl << 2;
+icmpPacket = (struct icmp *) (((char *)receiveBuffer) + ipv4HeaderLen);
+p = (char *) &(icmpPacket->icmp_data);
+
+memmove(&m1, p + sizeof(struct timeval), sizeof(m1));
+memmove(&m2, p + sizeof(struct timeval) + sizeof(m1), sizeof(m2));
+memmove(&m3, p + sizeof(struct timeval) + sizeof(m1) + sizeof(m2), sizeof(m3));
+memmove(&device, p + sizeof(struct timeval) + sizeof(m1) + sizeof(m2) + sizeof(m3), sizeof(device));
+
+if ( m1 == M1 && m2 == M2 && m3 == M3 )  {
+    long int    tripTime = getTripTime( (struct timeval *) &(icmpPacket->icmp_data) );
+    time_t      t=0;
+
+    //  check if received packet corresponds to ANY device
+    for ( i=0 ; i<devicesList->nDevices ; i++ )  {
+        if ( iphdr->saddr == devicesList->d[i].ipAddr32 && device == devicesList->d[i].deviceId) {
+
+            if (_verbose > 0)
+                printf("\n ICMP packet received: Magic OK. Matches device %i (%s)", device, devicesList->d[i].ip);    
+
+            devicesList->d[i].lastPingRTT = tripTime;
+            devicesList->d[i].lastPingOK = t;
+
+            // update ALSO interfaces, for simplicity in data representation
+			for (j=0 ; j < interfacesList->nInterfaces ; j++)  { 
+                if (interfacesList->d[j].enable > 0 && interfacesList->d[j].deviceId == device) {
+                    interfacesList->d[j].lastPingOK = t;
+                    interfacesList->d[j].lastPingRTT = tripTime;
+                    }
+                }
+            break;   // no need to continue with other devices
+            }
+        }
+    }
+
+return (retVal);
+}
+
+//--------------------------------------------------------------------
+
+// listen for ICMP REPLY and update DEVICES as they are received 
+// matching by IP, magic numbers and device
+
+int 	receiveMultiPing(devicesShm *devicesList, interfacesShm *interfacesList) {
+int                 localSocket = 0, sockErr=0;
+fd_set              rfds;
+struct timeval      tv;
+int                 auxErr=0, retVal = -9, receiveLen=0, end=0, count;
+char                receiveBuffer[MAXLLEN];
+
+if ( (sockErr = buildSocket( & localSocket )) != 0 )  {
+    fprintf(stderr, "\n\nERROR creating SOCKET (%i): are you root? \n\n", sockErr);    fflush(stderr);
+    retVal = -1; 
+    }
+
+while (!end) {    
+
+    // preventive socket clean - up
+    if (++count > 10000)  {
+        if (localSocket)  
+            close(localSocket);
+
+        if ( (sockErr = buildSocket( & localSocket )) != 0 )  {
+            fprintf(stderr, "\n\nERROR creating SOCKET (%i): are you root? \n\n", sockErr);    fflush(stderr);
+            retVal = -1; 
+            }
+        count = 0;    
+        }
+
+    // whatch for socket, read conditions
+    FD_ZERO(&rfds);   FD_SET(localSocket, &rfds);
+
+    // Wait for timeout (3 sec.)
+    tv.tv_sec = 3;  tv.tv_usec = 0;
+
+    auxErr = select(1 + localSocket, &rfds, NULL, NULL, &tv);
+    if (auxErr == -1) {
+        perror("select()");
+        retVal = -2;
+        }
+    else if (auxErr)   {
+        if (FD_ISSET(localSocket, &rfds))   {
+            if (receiveICMP(localSocket, receiveBuffer, &receiveLen) == 0) {
+                if (validateAndUpdateDevices(receiveBuffer, receiveLen, devicesList, interfacesList) == 0) 
+                    retVal = 0;
+                else    
+                    retVal = -3;    // validate error
+                } 
+            else 
+                retVal = -4;    // Receive Error
+            }    
+        }
+    else        
+        retVal = -5;  //  timeout error 
+    }
+
+if (localSocket)  
+    close(localSocket);
+
+return(retVal);
+}
+
+//--------------------------------------------------------------------
 //// EXTRAS
 /*
 
