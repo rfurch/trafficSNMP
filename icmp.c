@@ -469,7 +469,7 @@ int 	receiveMultiPing(devicesShm *devicesList, interfacesShm *interfacesList) {
 int                 localSocket = 0, sockErr=0;
 fd_set              rfds;
 struct timeval      tv;
-int                 auxErr=0, retVal = -9, receiveLen=0, end=0, count;
+int                 auxErr=0, retVal = -9, receiveLen=0, end=0, count=0;
 char                receiveBuffer[MAXLLEN];
 
 if ( (sockErr = buildSocket( & localSocket )) != 0 )  {
