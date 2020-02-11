@@ -548,63 +548,71 @@ while (1) {
 				
 				for (iface = 0, snmpCaptureOk = 0 ; iface < _shmInterfacesArea->nInterfaces ; iface++)   {
 					if (_shmInterfacesArea->d[iface].enable > 0 && _shmDevicesArea->d[devToMeasureFound].deviceId == _shmInterfacesArea->d[iface].deviceId) {
-												
-						snmpCollectBWInfo( &(_shmDevicesArea->d[devToMeasureFound]), &(_shmInterfacesArea->d[iface]));
 
-						// if this is not the first iteration
-						if ( (_shmInterfacesArea->d[iface].obytes_prev>0 || _shmInterfacesArea->d[iface].ibytes_prev>0)  ) {
+						if ( snmpCollectBWInfo( &(_shmDevicesArea->d[devToMeasureFound]), &(_shmInterfacesArea->d[iface])) == 0 ) {
 
-							// sending to files a DB we need to be sure there are traffic measurements		
-							if ( _to_files )
-								saveToFile( &(_shmInterfacesArea->d[iface]) );
+							_shmInterfacesArea->d[iface].lastSNMPOK = time(NULL);
+							snmpCaptureOk = 1;
 
-							// if we need to send data to DB, we will use SHM queue (parent will perform DB operation)	
-							if ( _to_memdb )
-								if ( shmQueuePut(_queueInterfaces, (void *)&(_shmInterfacesArea->d[iface])) != 1 )
-									fprintf(stderr, "\n ERROR on _queueInterfaces  ! ");
+							// if this is not the first iteration
+							if (_shmInterfacesArea->d[iface].iteration <= 0)
+								_shmInterfacesArea->d[iface].iteration = 1;
+							else {
+								if ( _shmInterfacesArea->d[iface].iteration < 1000)
+									_shmInterfacesArea->d[iface].iteration = _shmInterfacesArea->d[iface].iteration + 1 ;
 
-							// send data to influxDB.  Other process will take care, to avoid blocking...
-							if ( shmQueuePut(_queueInfluxDB, (void *)&(_shmInterfacesArea->d[iface])) != 1 ) 	
-									fprintf(stderr, "\n ERROR on _queueInfluxDB  ! ");
+								// sending to files a DB we need to be sure there are traffic measurements		
+								if ( _to_files )
+									saveToFile( &(_shmInterfacesArea->d[iface]) );
 
-							// send data to REDIS.  Other process will take care, to avoid blocking...
-							if ( shmQueuePut(_queueRedis, (void *)&(_shmInterfacesArea->d[iface])) != 1 )
-									fprintf(stderr, "\n ERROR on _queueRedis  ! ");
+								// if we need to send data to DB, we will use SHM queue (parent will perform DB operation)	
+								if ( _to_memdb )
+									if ( shmQueuePut(_queueInterfaces, (void *)&(_shmInterfacesArea->d[iface])) != 1 )
+										fprintf(stderr, "\n ERROR on _queueInterfaces  ! ");
 
-							// detect traffic counters change of at least ONE interface for this device
-							if (_shmInterfacesArea->d[iface].obytes_prev != _shmInterfacesArea->d[iface].obytes || _shmInterfacesArea->d[iface].ibytes_prev != _shmInterfacesArea->d[iface].ibytes )  {
-								_shmInterfacesArea->d[iface].lastSNMPOK = time(NULL);
-								snmpCaptureOk = 1;
-								}
+								// send data to influxDB.  Other process will take care, to avoid blocking...
+								if ( shmQueuePut(_queueInfluxDB, (void *)&(_shmInterfacesArea->d[iface])) != 1 ) 	
+										fprintf(stderr, "\n ERROR on _queueInfluxDB  ! ");
+
+								// send data to REDIS.  Other process will take care, to avoid blocking...
+								if ( shmQueuePut(_queueRedis, (void *)&(_shmInterfacesArea->d[iface])) != 1 )
+										fprintf(stderr, "\n ERROR on _queueRedis  ! ");
+
+								// detect traffic counters change of at least ONE interface for this device
+								//if (_shmInterfacesArea->d[iface].obytes_prev != _shmInterfacesArea->d[iface].obytes || _shmInterfacesArea->d[iface].ibytes_prev != _shmInterfacesArea->d[iface].ibytes )  {
+								//	_shmInterfacesArea->d[iface].lastSNMPOK = time(NULL);
+								//	snmpCaptureOk = 1;
+									}
+								}	
 							}
 						}
-					}	
-				pthread_mutex_lock (& (_shmDevicesArea->lock));
-				_shmDevicesArea->d[devToMeasureFound].snmpCaptured = 0 ; // return to 0 to next capture
-				if (snmpCaptureOk > 0) {
-					_shmDevicesArea->d[devToMeasureFound].lastSNMPOK = time(NULL);		
 
-					//printf("\n Pongo %li en dev %i", _shmDevicesArea->d[devToMeasureFound].lastPingOK , _shmDevicesArea->d[devToMeasureFound].deviceId)		;
-					//fflush(stdout);
-					if ( shmQueuePut(_queueDevices, (void *)&(_shmDevicesArea->d[devToMeasureFound])) != 1 )	 
-						fprintf(stderr, "\n ERROR on _queueDevices  ! ");
+					pthread_mutex_lock (& (_shmDevicesArea->lock));
+					_shmDevicesArea->d[devToMeasureFound].snmpCaptured = 0 ; // return to 0 to next capture
+					if (snmpCaptureOk > 0) {
+						_shmDevicesArea->d[devToMeasureFound].lastSNMPOK = time(NULL);		
+
+						//printf("\n Pongo %li en dev %i", _shmDevicesArea->d[devToMeasureFound].lastPingOK , _shmDevicesArea->d[devToMeasureFound].deviceId)		;
+						//fflush(stdout);
+						if ( shmQueuePut(_queueDevices, (void *)&(_shmDevicesArea->d[devToMeasureFound])) != 1 )	 
+							fprintf(stderr, "\n ERROR on _queueDevices  ! ");
+						}
+					pthread_mutex_unlock (& (_shmDevicesArea->lock));						
 					}
-				pthread_mutex_unlock (& (_shmDevicesArea->lock));						
-				}
-			else {	
-				if (_verbose > 1) {
-					printf("\n Worker %i device (%s, %s) NOT reachable via ICMP (last ping %li): No data collection...",
-					  getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip,
-					  (time(NULL) - _shmDevicesArea->d[devToMeasureFound].lastPingOK));
+				else {	
+					if (_verbose > 1) {
+						printf("\n Worker %i device (%s, %s) NOT reachable via ICMP (last ping %li): No data collection...",
+						getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip,
+						(time(NULL) - _shmDevicesArea->d[devToMeasureFound].lastPingOK));
 
-					fflush(stdout);
+						fflush(stdout);
+						}
 					}
-				}
-			}
-		}
+				}	 // if  there is a device to measure
+			}   // else no devices to configure
 
-	sleep (1);
-	}
+		sleep (1);
+		}    // endless while
 }
 
 //------------------------------------------------------------------------

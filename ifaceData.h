@@ -149,6 +149,8 @@ typedef struct interfaceData
   time_t            lastSNMPOK;     // these two are actually related to a device....
   time_t            lastPingRTT;    // in mseconds
 
+  int               iteration;      // to keep track of first iterations
+
   }interfaceData;
 
 // structure to store device properties

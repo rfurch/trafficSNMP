@@ -189,8 +189,8 @@ struct tm   stm;
 double      inavg=0, outavg=0;
 double      incalc=0, outcalc=0;
 
-if (_verbose > 3)
-	printf("\n\n Saving data to file:");
+if (_verbose > 1)
+	printf("\n\n Saving data to file %s for interface %i device %i", ifs->file_var_name, ifs->interfaceId, ifs->deviceId);
 
 if ( strlen(ifs->file_var_name) > 0 ) {
 	sprintf(fname, "/data/bw/%s", ifs->file_var_name);

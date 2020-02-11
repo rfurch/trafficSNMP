@@ -96,6 +96,7 @@ unsigned long long int  lli1=0, lli2=0;
 struct timeb 			stb;
 double					delta_t=0;
 char                    inCounterOid[400],outCounterOid[400];
+int                     retVal = -1;
 
 ftime(&stb); 
 iface->last_access=stb;
@@ -121,83 +122,86 @@ else {
     sprintf(outCounterOid, "1.3.6.1.2.1.2.2.1.16.%s", iface->oidIndex);
     }
 
-if ( getInOutCounters (d->snmpVersion, d->snmpCommunity, d->ip, inCounterOid, outCounterOid, &lli1,  &lli2) != 0) 
+if ( getInOutCounters (d->snmpVersion, d->snmpCommunity, d->ip, inCounterOid, outCounterOid, &lli1,  &lli2) != 0) {
     printf("\n ERROR getting IN / OUT counters !!!  Device: %s (%s)\n", d->name, d->ip);
+    retVal = -1;
+    }
+else {
+    // success condition needs validation...
+    retVal = 0;
+    iface->ibytes = lli1;
+    iface->obytes = lli2;
 
-iface->ibytes = lli1;
-iface->obytes = lli2;
+    if ( iface->ibytes_prev == 0 ) { // just starting, don't do anything
+        }
+    else if ( iface->ibytes_prev > iface->ibytes || iface->obytes_prev > iface->obytes ) { // prev > current, there was a clear counter, counters return to 0, etc, don't do any calculations
+            // do nothing, we can figure out results though....
+        }
+    else  {
+        double auxin=0;
+        double auxout=0;
 
-if ( iface->ibytes_prev == 0 ) // just starting, don't do anything
-  {
-  }
-else if ( iface->ibytes_prev > iface->ibytes || iface->obytes_prev > iface->obytes ) // prev > current, there was a clear counter, counters return to 0, etc, don't do any calculations
-  {
-      // do nothing, we can figure out results though....
-  }
-else
-  {
-  double auxin=0;
-  double auxout=0;
+        auxin = (8*(double)(iface->ibytes - iface->ibytes_prev)) / delta_t;
+        if (auxin < (((long long int)200) * 1000 * 1000 * 1000))  // < 200Gbps 
+            iface->ibw =  auxin;
+        
+        auxout = (8*(double)(iface->obytes - iface->obytes_prev)) / delta_t;
+        if (auxout < (((long long int)200) * 1000 * 1000 * 1000))  // < 200Gbps 
+            iface->obw =  auxout;  
 
-  auxin = (8*(double)(iface->ibytes - iface->ibytes_prev)) / delta_t;
-  if (auxin < (((long long int)200) * 1000 * 1000 * 1000))  // < 200Gbps 
-	iface->ibw =  auxin;
-  
-  auxout = (8*(double)(iface->obytes - iface->obytes_prev)) / delta_t;
-  if (auxout < (((long long int)200) * 1000 * 1000 * 1000))  // < 200Gbps 
-	iface->obw =  auxout;  
+        // if ( iface->ibytes_prev_prev == 0 ) // second pass after starting the program, it's a good idea to use current 'instant' traffic as average!
+        //	{
+        //	int j=0;
+        //
+        //	for (j=0 ; j<MAXAVGBUF ; j++)	// copy FIRST sample to the WHOLE buffer
+        //		iface->ibw_buf[j] = iface->ibw;
+        //	iface->ibw_a	= iface->ibw_b = iface->ibw_c = iface->ibw;
+        //
+        //	for (j=0 ; j<MAXAVGBUF ; j++)	// copy FIRST sample to the WHOLE buffer
+        //		iface->obw_buf[j] = iface->obw;
+        //	iface->obw_a	= iface->obw_b = iface->obw_c = iface->obw;
+        //	}
+        //  else
+            {
+            // shift and copy AVG buffer.  Last value is always in the first position, previous in the second an so on...
+            memmove( &(iface->ibw_buf[1]), &(iface->ibw_buf[0]), sizeof((iface->ibw_buf[0])) * (MAXAVGBUF - 1) );  
+            iface->ibw_buf[0] = iface->ibw;
+            
+            iface->ibw_a =   0.5 * iface->ibw + 0.5 * iface->ibw_a;
+            iface->ibw_b =   0.1 * iface->ibw + 0.9 * iface->ibw_b;
+            iface->ibw_c =   0.02 * iface->ibw + 0.98 * iface->ibw_c;
 
-// if ( iface->ibytes_prev_prev == 0 ) // second pass after starting the program, it's a good idea to use current 'instant' traffic as average!
-//	{
-//	int j=0;
-//
-//	for (j=0 ; j<MAXAVGBUF ; j++)	// copy FIRST sample to the WHOLE buffer
-//		iface->ibw_buf[j] = iface->ibw;
-//	iface->ibw_a	= iface->ibw_b = iface->ibw_c = iface->ibw;
-//
-//	for (j=0 ; j<MAXAVGBUF ; j++)	// copy FIRST sample to the WHOLE buffer
-//		iface->obw_buf[j] = iface->obw;
-//	iface->obw_a	= iface->obw_b = iface->obw_c = iface->obw;
-//	}
-//  else
-  	  {
-	  // shift and copy AVG buffer.  Last value is always in the first position, previous in the second an so on...
-	  memmove( &(iface->ibw_buf[1]), &(iface->ibw_buf[0]), sizeof((iface->ibw_buf[0])) * (MAXAVGBUF - 1) );  
-	  iface->ibw_buf[0] = iface->ibw;
-	  
-	  iface->ibw_a =   0.5 * iface->ibw + 0.5 * iface->ibw_a;
-	  iface->ibw_b =   0.1 * iface->ibw + 0.9 * iface->ibw_b;
-	  iface->ibw_c =   0.02 * iface->ibw + 0.98 * iface->ibw_c;
+            // shift and copy AVG buffer.  Last value is always in the first position, previous in the second an so on...
+            memmove( &(iface->obw_buf[1]), &(iface->obw_buf[0]), sizeof((iface->obw_buf[0])) * (MAXAVGBUF - 1) );  
+            iface->obw_buf[0] = iface->obw;
 
-	  // shift and copy AVG buffer.  Last value is always in the first position, previous in the second an so on...
-	  memmove( &(iface->obw_buf[1]), &(iface->obw_buf[0]), sizeof((iface->obw_buf[0])) * (MAXAVGBUF - 1) );  
-	  iface->obw_buf[0] = iface->obw;
+            iface->obw_a =   0.5 * iface->obw + 0.5 * iface->obw_a;
+            iface->obw_b =   0.1 * iface->obw + 0.9 * iface->obw_b;
+            iface->obw_c =   0.02 * iface->obw + 0.98 * iface->obw_c;
+            }
+        }
 
-	  iface->obw_a =   0.5 * iface->obw + 0.5 * iface->obw_a;
-	  iface->obw_b =   0.1 * iface->obw + 0.9 * iface->obw_b;
-	  iface->obw_c =   0.02 * iface->obw + 0.98 * iface->obw_c;
-	  }
-  }
+    if (d->ncycle > 10)  // alarms only after startup window
+        if (_send_alarm)
+            evalAlarm(d, iface);
 
-if (d->ncycle > 10)  // alarms only after startup window
-  if (_send_alarm)
-	evalAlarm(d, iface);
-  
-//if (_verbose > 1 || iface->interfaceId==13)
-if (_verbose > 1 )
-  {
-  printf("\n\n --------------------------- ");
-  printf("\n interface: %s  (%s)", iface->name, iface->description);
-  printf("\n delta t:  %lf", delta_t);
-  printf("\n ibw: %lf ibw_a: %lf ibw_b: %lf ibw_c: %lf", iface->ibw, iface->ibw_a, iface->ibw_b, iface->ibw_c);
-  printf("\n obw: %lf obw_a: %lf obw_b: %lf obw_c: %lf", iface->obw, iface->obw_a, iface->obw_b, iface->obw_c);
-  printf("\n ibytes: %lli obytes: %lli", iface->ibytes, iface->obytes);
-  printf("\n ibytes prev: %lli obytes prev: %lli", iface->ibytes_prev, iface->obytes_prev);
-  printf("\n --------------------------- \n\n"); 
-  fflush(stdout);
-  }  
+    if (d->ncycle < 1000) 
+        d->ncycle = d->ncycle + 1;
 
-return(0);
+    //if (_verbose > 1 || iface->interfaceId==13)
+    if (_verbose > 1 ) {
+        printf("\n\n --------------------------- ");
+        printf("\n interface: %s  (%s)", iface->name, iface->description);
+        printf("\n delta t:  %lf", delta_t);
+        printf("\n ibw: %lf ibw_a: %lf ibw_b: %lf ibw_c: %lf", iface->ibw, iface->ibw_a, iface->ibw_b, iface->ibw_c);
+        printf("\n obw: %lf obw_a: %lf obw_b: %lf obw_c: %lf", iface->obw, iface->obw_a, iface->obw_b, iface->obw_c);
+        printf("\n ibytes: %lli obytes: %lli", iface->ibytes, iface->obytes);
+        printf("\n ibytes prev: %lli obytes prev: %lli", iface->ibytes_prev, iface->obytes_prev);
+        printf("\n --------------------------- \n\n"); 
+        fflush(stdout);
+        }  
+    }
+return(retVal);
 }
 
 //-------------------------------------------------------------
@@ -622,7 +626,7 @@ int getInOutCounters (long snmpVersion, char *community, char *ipAddress, char *
     if (failures)
         goto close_session;
 
-    exitval = 0;
+    //    exitval = 0;
 
     // Perform the request.
     // If the Get Request fails, note the OID that caused the error,
@@ -631,6 +635,10 @@ int getInOutCounters (long snmpVersion, char *community, char *ipAddress, char *
     status = snmp_synch_response(ss, pdu, &response);
     if (status == STAT_SUCCESS) {
         if (response->errstat == SNMP_ERR_NOERROR) {
+
+            // location of success should be verified    
+            exitval = 0;
+
             for (vars = response->variables, counter=0; vars; counter++, vars = vars->next_variable) {
                 //print_variable(vars->name, vars->name_length, vars);
 
