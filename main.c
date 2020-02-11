@@ -593,8 +593,10 @@ while (1) {
 				}
 			else {	
 				if (_verbose > 1) {
-					printf("\n Worker %i device (%s, %s) NOT reachable via ICMP: No data collection...", 
-					  getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip);
+					printf("\n Worker %i device (%s, %s) NOT reachable via ICMP (last ping %li): No data collection...",
+					  getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip,
+					  (time(NULL) - _shmDevicesArea->d[devToMeasureFound].lastPingOK));
+
 					fflush(stdout);
 					}
 				}

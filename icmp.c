@@ -433,7 +433,7 @@ memmove(&device, p + sizeof(struct timeval) + sizeof(m1) + sizeof(m2) + sizeof(m
 
 if ( m1 == M1 && m2 == M2 && m3 == M3 )  {
     long int    tripTime = getTripTime( (struct timeval *) &(icmpPacket->icmp_data) );
-    time_t      t=0;
+    time_t      t=time(NULL);
 
     //  check if received packet corresponds to ANY device
     for ( i=0 ; i<devicesList->nDevices ; i++ )  {
