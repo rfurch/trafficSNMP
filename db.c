@@ -498,18 +498,23 @@ db_connect();
 
   if (d->enable > 0)
 	{
-	sprintf(querystring, "INSERT INTO topology.devices_bw_mem ( devid, ifid, ifalias, tdate, \
-				tstamp, ibytes, obytes, ibw, obw, ibw_a, obw_a, ibw_b, obw_b, ibw_c, obw_c) \
-				VALUES ( %i, %i, '%s', NOW(), NOW(), %lli, %lli, %.2lf, %.2lf, %.2lf, %.2lf, %.2lf, %.2lf, %.2lf, %.2lf ) \
+	sprintf(querystring,"INSERT INTO topology.devices_bw_mem ( devid, ifid, ifalias, tdate, \
+				tstamp, ibytes, obytes, ibw, obw, ibw_a, obw_a, ibw_b, obw_b, ibw_c, obw_c \
+				last_snmp_ok, last_icmp_ok, snmp_config_ok, oid_found) \
+				VALUES ( %i, %i, '%s', NOW(), NOW(), %lli, %lli, %.2lf, %.2lf, %.2lf, %.2lf, \
+				%.2lf, %.2lf, %.2lf, %.2lf, %li, %li, %i, %i ) \
 				ON DUPLICATE KEY UPDATE devid=%i, ifid=%i, ifalias='%s', tdate=NOW(), \
 				tstamp=NOW(), ibytes=%lli, obytes=%lli, ibw=%.2lf, obw=%.2lf, ibw_a=%.2lf, obw_a=%.2lf, \
-				 ibw_b=%.2lf, obw_b=%.2lf, ibw_c=%.2lf, obw_c=%.2lf; ", 
+				ibw_b=%.2lf, obw_b=%.2lf, ibw_c=%.2lf, obw_c=%.2lf, \
+				last_snmp_ok=%li, last_icmp_ok=%li, snmp_config_ok=%i, oid_found=%i;",
+                d->deviceId, d->interfaceId, d->description, d->ibytes, d->obytes,
+				d->ibw/1000, d->obw/1000, d->ibw_a/1000, d->obw_a/1000,
+				d->ibw_b/1000, d->obw_b/1000, d->ibw_c/1000, d->obw_c/1000,
+				d->lastSNMPOK, d->lastPingOK, d->snmpDeviceOK, d->snmpOIDOk, 
                 d->deviceId, d->interfaceId, d->description, d->ibytes, d->obytes, 
 				d->ibw/1000, d->obw/1000, d->ibw_a/1000, d->obw_a/1000, 
 				d->ibw_b/1000, d->obw_b/1000, d->ibw_c/1000, d->obw_c/1000, 
-                d->deviceId, d->interfaceId, d->description, d->ibytes, d->obytes, 
-				d->ibw/1000, d->obw/1000, d->ibw_a/1000, d->obw_a/1000, 
-				d->ibw_b/1000, d->obw_b/1000, d->ibw_c/1000, d->obw_c/1000);
+				d->lastSNMPOK, d->lastPingOK, d->snmpDeviceOK, d->snmpOIDOk);
 
 
 	if (_verbose > 3)

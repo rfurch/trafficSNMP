@@ -27,7 +27,6 @@
 #include <syslog.h>
 #include <sys/prctl.h>
 
-
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
@@ -45,7 +44,6 @@
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 #include <hiredis.h>
-
 
 #include "ifaceData.h"                                                                                                     
 #include "shm_q.h"
@@ -348,18 +346,23 @@ while(1) {
         "HSET devices_bw:%i 'json' '{\"name\":\"%s\",\"descr\":\"%b\","
         "\"ibw\":%.2f,\"obw\":%.2f,\"ibw_a\":%.2f,\"obw_a\":%.2f,"
         "\"ibw_b\":%.2f,\"obw_b\":%.2f,\"ibw_c\":%.2f,\"obw_c\":%.2f,"
-        "\"file\":\"%s\",\"lastICMP\":%li,\"lastSNMP\":%li}' 'name' '%s' 'descr' '%b' "
+        "\"file\":\"%s\",\"lastICMP\":%li,\"lastSNMP\":%li,\"snmpDeviceOK\":%i,\"snmpOIDOk\":%i}'"
+		"'name' '%s' 'descr' '%b' "
         "'ibw' '%.2f' 'obw' '%.2f' 'ibw_a' '%.2f' 'obw_a' '%.2f' "
         "'ibw_b' '%.2f' 'obw_b' '%.2f' 'ibw_c' '%.2f' 'obw_c' '%.2f' "
-        "'lastICMP' '%li' 'lastSNMP' '%li'",
+        "'lastICMP' '%li' 'lastSNMP' '%li' 'snmpDeviceOK' '%i' 'snmpOIDOk' '%i' ",
          ifaceData.interfaceId, ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
          ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a,
          ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c,
          ifaceData.file_var_name ,ifaceData.lastPingOK, ifaceData.lastSNMPOK,
+		 ifaceData.snmpDeviceOK, ifaceData.snmpOIDOk,
          ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
          ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a,
          ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c,
-         ifaceData.lastPingOK, ifaceData.lastSNMPOK);
+         ifaceData.lastPingOK, ifaceData.lastSNMPOK,
+		 ifaceData.snmpDeviceOK, ifaceData.snmpOIDOk
+		 );
+
 
 		if (redisGetReply(c, (void *) &reply) != REDIS_OK) 
 			printf("\n --REDIS ERROR!  (%s) ",  reply->str );			
@@ -434,35 +437,54 @@ while (1) {
 // process startup time, and became available later... 
 
 void workerCheckOfflineDevices()  {
-int 	devInError=0;
-int 	i=0;
+int 		devIndex = 0;
+int 		counter = 0 ;
 
 sleep( 60 );  
 
 while (1) {
-	// check for devices in ERROR condition
-	
-	pthread_mutex_lock (& (_shmDevicesArea->lock));
-	for (i=0,devInError=-1 ; i<_shmDevicesArea->nDevices ; i++) {
-		if (_shmDevicesArea->d[i].enable > 0 &&  _shmDevicesArea->d[i].snmpConfigured == 3) {
-			devInError = i;
-			break;
-			}
-		}
-	pthread_mutex_unlock (& (_shmDevicesArea->lock));
 
-	if (devInError > -1)	{ // device to check (again) can be alive now!
-		if ( (time(NULL) - _shmDevicesArea->d[devInError].lastPingOK) < 100 ) {
+	counter = (counter < 1000) ? (counter + 1) : 0;
+	
+	// check for devices in ERROR condition every 5 minutes
+	if ( (counter % 30 ) == 0) {
+		pthread_mutex_lock (& (_shmDevicesArea->lock));
+		for (devIndex = 0 ; devIndex<_shmDevicesArea->nDevices ; devIndex++ ) {
+			if (_shmDevicesArea->d[devIndex].enable > 0 &&  _shmDevicesArea->d[devIndex].snmpConfigured == 3) {
+				if ( (time(NULL) - _shmDevicesArea->d[devIndex].lastPingOK) < 100 ) {
+					if (_verbose > 1) {
+						printf("\n Worker workerCheckOfflineDevices: device (%s, %s) is reachable now! Set state to '0'", _shmDevicesArea->d[devIndex].name, _shmDevicesArea->d[devIndex].ip);
+						fflush(stdout);
+						}
+				_shmDevicesArea->d[devIndex].snmpConfigured = 0;
+				}
+			}
+		}		
+		pthread_mutex_unlock (& (_shmDevicesArea->lock));
+		}
+
+	// send Interfaces IN ERROR to redis for error debug from WEB every 60 sec
+	if ( (counter % 6 ) == 0) {
+		int iface=0;
+
+	    for (iface = 0 ; iface < _shmInterfacesArea->nInterfaces ; iface++)   {
+    	    if (_shmInterfacesArea->d[iface].enable > 0 && (_shmInterfacesArea->d[iface].snmpOIDOk<1 ||
+			_shmInterfacesArea->d[iface].snmpDeviceOK<1 ||
+			( (time(NULL) - _shmInterfacesArea->d[iface].lastSNMPOK ) > 100 ) ||
+			( (time(NULL) - _shmInterfacesArea->d[iface].lastPingOK ) > 100 ) ) ) {
+
 			if (_verbose > 1) {
-				printf("\n Worker workerCheckOfflineDevices: device (%s, %s) is reachable now! Set state to '0'", _shmDevicesArea->d[devInError].name, _shmDevicesArea->d[devInError].ip);
+				printf("\n Sending data for interface %s to REDIS (IN ERROR):", _shmInterfacesArea->d[iface].peername);
 				fflush(stdout);
 				}
+			// send data to REDIS.  Other process will take care, to avoid blocking...
+			if ( shmQueuePut(_queueRedis, (void *)&(_shmInterfacesArea->d[iface])) != 1 )
+				fprintf(stderr, "\n ERROR on _queueRedis  ! ");				
+				}
+			}	
+		}			
 
-			_shmDevicesArea->d[devInError].snmpConfigured = 0;
-			}
-		}
-
-	sleep (5);
+	sleep (10);
 	}
 }
 
@@ -504,7 +526,7 @@ while (1) {
 			fflush(stdout);
 			}
 
-		if ( snmpCheckParameters( &(_shmDevicesArea->d[devToInitFound]), _shmInterfacesArea )																										 == 1 ) {    // OK!
+		if ( snmpCheckParameters( &(_shmDevicesArea->d[devToInitFound]), _shmInterfacesArea ) == 0 ) {    // OK!
 			pthread_mutex_lock (& (_shmDevicesArea->lock));
 			_shmDevicesArea->d[devToInitFound].snmpConfigured = 2 ; // mark as  'configured' 
 			pthread_mutex_unlock (& (_shmDevicesArea->lock));
@@ -547,7 +569,7 @@ while (1) {
 					}
 				
 				for (iface = 0, snmpCaptureOk = 0 ; iface < _shmInterfacesArea->nInterfaces ; iface++)   {
-					if (_shmInterfacesArea->d[iface].enable > 0 && _shmDevicesArea->d[devToMeasureFound].deviceId == _shmInterfacesArea->d[iface].deviceId) {
+					if (_shmInterfacesArea->d[iface].enable > 0 && _shmInterfacesArea->d[iface].snmpOIDOk > 0 && _shmDevicesArea->d[devToMeasureFound].deviceId == _shmInterfacesArea->d[iface].deviceId) {
 
 						if ( snmpCollectBWInfo( &(_shmDevicesArea->d[devToMeasureFound]), &(_shmInterfacesArea->d[iface])) == 0 ) {
 

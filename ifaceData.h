@@ -151,6 +151,10 @@ typedef struct interfaceData
 
   int               iteration;      // to keep track of first iterations
 
+  int               snmpOIDOk;      // SNMP OID for THIS interface was captured successfuly
+  int               snmpDeviceOK;   // >0 if the DEVICE is SNMP readable
+
+
   }interfaceData;
 
 // structure to store device properties
@@ -172,6 +176,7 @@ typedef struct deviceData
   time_t          lastPingRTT;    // in mseconds
   time_t          lastSNMPOK;
   int 			      nInterfaces;
+  int             interfacesFoundInSNMPTable;
   interfaceData		*ifs;	
   long long int 	ncycle;
   short int 		  getrunn;

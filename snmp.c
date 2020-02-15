@@ -43,9 +43,10 @@ char           *end_name = NULL;
 
 // for SNMP (v1) we just try to figure out community name
 // version, etc
+// returns 0 on success
 
 int 	snmpCheckParameters( deviceData *d, interfacesShm *shmInt) {
-int     ret=0, retval = 1;
+int     ret=0, retval = 0, i=0;
 
 if ( snmpGetSysDesrc (SNMP_VERSION_2c, "Vostok3KA", d->ip, NULL) == 0 ) {
     strcpy(d->snmpCommunity, "Vostok3KA");
@@ -66,18 +67,26 @@ else if ( snmpGetSysDesrc (SNMP_VERSION_1, "public", d->ip, NULL) == 0) {
 else {
     printf("\n\n Unable to contact device (%s,%s) with SNMP version 1 / 2c and given community \n\n", d->name, d->ip);
     sleep(5);
-    retval = 0;
+    retval = -1;
 }
 
-if ( snmpVerifyIfXTable (d, NULL ) == 0)
-    d->use64bitsCounters = 1;
+if (retval == 0) { // device available via SNMP
 
-// get interface position in IF-TABLE (1.3.6.1.2.1.2.2.1.2). In case of error we cannot continue...
-// in case of error we also look into ifXtable  (1.3.6.1.2.1.31.1.1.1.1) 
-if ( (ret = getIndexOfInterfaces( d, shmInt, "1.3.6.1.2.1.2.2.1.2")) != 0 ) {
-    if ( (ret = getIndexOfInterfaces( d, shmInt, "1.3.6.1.2.1.31.1.1.1.1")) != 0 ) {
-        printf("\n\n UNABLE to find some Interfaces (device *%s, %s) error returned: %i !! \n\n", d->name, d->ip, ret );
-        retval = 0;
+    // set ALL interfaces of THIS device as 'readable via SNMP'
+    for (i = 0 ; i < shmInt->nInterfaces ; i++)   
+        if (shmInt->d[i].enable > 0 && d->deviceId == shmInt->d[i].deviceId) 
+            shmInt->d[i].snmpDeviceOK = 1;
+
+    if ( snmpVerifyIfXTable (d, NULL ) == 0)
+        d->use64bitsCounters = 1;
+
+    // get interface position in IF-TABLE (1.3.6.1.2.1.2.2.1.2). In case of error we cannot continue...
+    // in case of error we also look into ifXtable  (1.3.6.1.2.1.31.1.1.1.1) 
+    if ( (ret = getIndexOfInterfaces( d, shmInt, "1.3.6.1.2.1.2.2.1.2")) != 0 ) {
+        if ( (ret = getIndexOfInterfaces( d, shmInt, "1.3.6.1.2.1.31.1.1.1.1")) != 0 ) {
+            printf("\n\n UNABLE to find some Interfaces (device *%s, %s, Interf: %i  found: %i) error returned: %i !! \n\n", d->name, d->ip, d->nInterfaces, d->interfacesFoundInSNMPTable, ret );
+            retval = 0;
+            }
         }
     }
 
@@ -207,25 +216,25 @@ return(retVal);
 //-------------------------------------------------------------
 //-------------------------------------------------------------
 
-// for a give IP and community, get Interface from IF TABLE (no mibs)
+// for a given DEVICE (IP and community), get Interface from IF TABLE (no mibs)
 // and fill last digit for interface (function returns 0 on success)
 // e.g.:  goes through 1.3.6.1.2.1.2.2.1.2 (snmpwalk) and if interface "eth1"  is found
 // in position  1.3.6.1.2.1.2.2.1.2.11, return '11' in oidIndex
 
 int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstOID )
 {
-    oid             name[MAX_OID_LEN];
-    size_t          name_length;
-    oid             root[MAX_OID_LEN];
-    size_t          rootlen;
-    oid             end_oid[MAX_OID_LEN];
-    size_t          end_len = 0;
-    int             count;
-    int             running;
-    int             status = STAT_ERROR;
-    int             exitval = -1;
-    struct timeval  tv_a, tv_b;
-    int             iface=0, ifaceFound=0;;
+    oid                     name[MAX_OID_LEN];
+    size_t                  name_length;
+    oid                     root[MAX_OID_LEN];
+    size_t                  rootlen;
+    oid                     end_oid[MAX_OID_LEN];
+    size_t                  end_len = 0;
+    int                     count;
+    int                     running;
+    int                     status = STAT_ERROR;
+    int                     exitval = -1;
+    struct timeval          tv_a, tv_b;
+    int                     iface=0;;
     netsnmp_session         session, *ss;
     netsnmp_pdu             *pdu;
     netsnmp_pdu             *response;
@@ -264,6 +273,8 @@ int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstO
 
     running = 1;
 
+    d->interfacesFoundInSNMPTable = 0;
+    
     while (running) {
 
         if ( session.version == SNMP_VERSION_2c ) {
@@ -294,6 +305,11 @@ int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstO
                     if (snmp_oid_compare(end_oid, end_len, vars->name, vars->name_length) <= 0) {
                         //   not part of this subtree 
                         running = 0;
+                        // end of this part of the tree
+                        // if we found at least ONE interface we consider the process SUCCESSFUL
+                        if (d->interfacesFoundInSNMPTable > 0)
+                            exitval = 0; 
+
                         continue;
                     }
                     snprint_objid(mybuff, 299, vars->name, vars->name_length);
@@ -306,6 +322,9 @@ int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstO
                                     if ( _verbose > 1)            
                                         printf("\n --- FOUND:  |%s|%s| \n" , vars->val.string, mybuff);
                                     strcpy(shmInt->d[iface].oidIndex, strrchr(mybuff, '.') + 1);
+                                    d->interfacesFoundInSNMPTable++;
+                                    shmInt->d[iface].snmpOIDOk = 1;
+
                                     }
                                 else {   // we try removing whitespaces... spsecial case for RAISECOM!!!
                                     char    auxStr[300];
@@ -314,21 +333,18 @@ int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstO
                                         if ( _verbose > 1)            
                                             printf("\n --- FOUND:  |%s|%s|%s|%s| \n" , shmInt->d[iface].name, auxStr, vars->val.string, mybuff);
                                         strcpy(shmInt->d[iface].oidIndex, strrchr(mybuff, '.') + 1);
+                                        d->interfacesFoundInSNMPTable++;
+                                        shmInt->d[iface].snmpOIDOk = 1;
+
                                         }
                                     }    
                                 }   
                             }    
                         }    
 
-                    // check if all interfaces have OID index
-                    for (iface = 0, ifaceFound=0 ; iface < shmInt->nInterfaces ; iface++)   
-                        if (shmInt->d[iface].enable > 0 && d->deviceId == shmInt->d[iface].deviceId) 
-                            if (strlen(shmInt->d[iface].oidIndex) > 0) 
-                                ifaceFound++;
-
-                    if (ifaceFound == d->nInterfaces) {  // all interfaces found    
+                    if (d->interfacesFoundInSNMPTable == d->nInterfaces) {  // all interfaces found    
                         if ( _verbose > 1)            
-                            printf("\n --- ALL Interfaces FOUND in IF - TABLE (%i)  \n", ifaceFound);
+                            printf("\n --- ALL Interfaces FOUND in IF - TABLE (%i)  \n", d->interfacesFoundInSNMPTable);
 
                         running = 0;
                         exitval = 0;
@@ -393,9 +409,9 @@ int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstO
             snmp_free_pdu(response);
     }
 
-    if (ifaceFound < d->nInterfaces) {  // NOT all interfaces have been found    
+    if (d->interfacesFoundInSNMPTable < d->nInterfaces) {  // NOT all interfaces have been found    
         if ( _verbose > 1)            
-            printf("\n --- %i  Interfaces NOT FOUND in IF - TABLE \n", d->nInterfaces - ifaceFound );
+            printf("\n --- %i Interfaces NOT FOUND in IF - TABLE (dev: %i - %s)  \n", d->nInterfaces - d->interfacesFoundInSNMPTable, d->deviceId, d->name);
     }
 
     snmp_close(ss);
