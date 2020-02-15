@@ -346,7 +346,7 @@ while(1) {
         "HSET devices_bw:%i 'json' '{\"name\":\"%s\",\"descr\":\"%b\","
         "\"ibw\":%.2f,\"obw\":%.2f,\"ibw_a\":%.2f,\"obw_a\":%.2f,"
         "\"ibw_b\":%.2f,\"obw_b\":%.2f,\"ibw_c\":%.2f,\"obw_c\":%.2f,"
-        "\"file\":\"%s\",\"lastICMP\":%li,\"lastSNMP\":%li,\"snmpDeviceOK\":%i,\"snmpOIDOk\":%i}'"
+        "\"file\":\"%s\",\"lastICMP\":%li,\"lastSNMP\":%li,\"snmpDeviceOK\":%i,\"snmpOIDOk\":%i}' "
 		"'name' '%s' 'descr' '%b' "
         "'ibw' '%.2f' 'obw' '%.2f' 'ibw_a' '%.2f' 'obw_a' '%.2f' "
         "'ibw_b' '%.2f' 'obw_b' '%.2f' 'ibw_c' '%.2f' 'obw_c' '%.2f' "
@@ -373,7 +373,7 @@ while(1) {
         freeReplyObject(reply);
 
 		// reccord also in a SET (kinf of index)
-        reply = redisCommand(c, "SADD devices_bw %i", ifaceData.interfaceId );
+        reply = redisCommand(c, "SADD devices_bw_list %i", ifaceData.interfaceId );
 		//printf("\n %s", reply->str );
         freeReplyObject(reply);
 		}
