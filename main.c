@@ -322,26 +322,6 @@ while(1) {
 	while (shmQueueGet(_queueRedis, &ifaceData) == 1) {
 		//  set in memory HASH 
 
-
-		/*sprintf(myStr, "HSET devices_bw:%i 'json' '{\"name\":\"%s\",\"descr\":\"%s\","
-		"\"ibw\":%.2f,\"obw\":%.2f,\"ibw_a\":%.2f,\"obw_a\":%.2f,"
-		"\"ibw_b\":%.2f,\"obw_b\":%.2f,\"ibw_c\":%.2f,\"obw_c\":%.2f,"
-		"\"file\":\"%s\"}'  'name' '%s' 'descr' '%s' "
-		"'ibw' '%.2f' 'obw' '%.2f' 'ibw_a' '%.2f' 'obw_a' '%.2f' "
-		"'ibw_b' '%.2f' 'obw_b' '%.2f' 'ibw_c' '%.2f' 'obw_c' '%.2f' ",
-		 ifaceData.interfaceId, ifaceData.name, "---", 
-		 ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a, 
-		 ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c, 
-		 ifaceData.file_var_name ,ifaceData.name, "---", 
-		 ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a, 
-		 ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c);
-
-        reply = redisCommand(c, myStr);  */
-
-	//	redisAppendCommand(c, 
-	//	"HSET devices_bw:%i 'descr' %b" , 
-	//	ifaceData.interfaceId, ifaceData.peername, strlen(ifaceData.peername));
-
         redisAppendCommand(c,
         "HSET devices_bw:%i 'json' '{\"name\":\"%s\",\"descr\":\"%b\","
         "\"ibw\":%.2f,\"obw\":%.2f,\"ibw_a\":%.2f,\"obw_a\":%.2f,"
@@ -372,10 +352,29 @@ while(1) {
 		//	printf("\n |%s|", myStr);			
         freeReplyObject(reply);
 
-		// reccord also in a SET (kinf of index)
+		// set individual hashes
+        redisAppendCommand(c,
+        "HSET devices_bw_%06i "
+		"'name' '%s' 'descr' '%b' "
+        "'ibw' '%.2f' 'obw' '%.2f' 'ibw_a' '%.2f' 'obw_a' '%.2f' "
+        "'ibw_b' '%.2f' 'obw_b' '%.2f' 'ibw_c' '%.2f' 'obw_c' '%.2f' "
+        "'lastICMP' '%li' 'lastSNMP' '%li' 'snmpDeviceOK' '%i' 'snmpOIDOk' '%i' ",
+         ifaceData.interfaceId, ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
+         ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a,
+         ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c,
+         ifaceData.file_var_name ,ifaceData.lastPingOK, ifaceData.lastSNMPOK,
+		 ifaceData.snmpDeviceOK, ifaceData.snmpOIDOk);
+
+		if (redisGetReply(c, (void *) &reply) != REDIS_OK) 
+			printf("\n --REDIS ERROR!  (%s) ",  reply->str );			
+		
+        freeReplyObject(reply);
+
+		// record also in a SET (kind of index)
         reply = redisCommand(c, "SADD devices_bw_list %i", ifaceData.interfaceId );
 		//printf("\n %s", reply->str );
         freeReplyObject(reply);
+
 		}
 
 	fflush(stdout);
