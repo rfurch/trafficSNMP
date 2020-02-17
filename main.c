@@ -367,7 +367,7 @@ while(1) {
 */
 		// set individual hashes
         redisAppendCommand(c,
-        "HSET devices_bw_%06i "
+        "HSET devices_bw:%06i "
 		"name %s descr %b "
         "ibw %.2f obw %.2f ibw_a %.2f obw_a %.2f "
         "ibw_b %.2f obw_b %.2f ibw_c %.2f obw_c %.2f "
@@ -386,7 +386,7 @@ while(1) {
         freeReplyObject(reply);
 
 		// record also in a SET (kind of index)
-        reply = redisCommand(c, "SADD devices_bw_list devices_bw_%06i", ifaceData.interfaceId );
+        reply = redisCommand(c, "SADD devices_bw_list devices_bw:%06i", ifaceData.interfaceId );
         freeReplyObject(reply);
 		}
 
