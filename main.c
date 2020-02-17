@@ -321,7 +321,7 @@ while(1) {
 	// send interface (traffic)  data to DB	
 	while (shmQueueGet(_queueRedis, &ifaceData) == 1) {
 		//  set in memory HASH 
-
+/* 
         redisAppendCommand(c,
         "HSET devices_bw:%i 'json' '{\"name\":\"%s\",\"descr\":\"%b\","
         "\"ibw\":%.2f,\"obw\":%.2f,\"ibw_a\":%.2f,\"obw_a\":%.2f,"
@@ -353,7 +353,7 @@ while(1) {
         freeReplyObject(reply);
 
 		// set individual hashes
-/*        redisAppendCommand(c,
+        redisAppendCommand(c,
         "HSET devices_bw_%06i "
 		"'name' '%s' 'descr' '%b' "
         "'ibw' '%.2f' 'obw' '%.2f' 'ibw_a' '%.2f' 'obw_a' '%.2f' "
@@ -371,13 +371,14 @@ while(1) {
 		"name %s descr %b "
         "ibw %.2f obw %.2f ibw_a %.2f obw_a %.2f "
         "ibw_b %.2f obw_b %.2f ibw_c %.2f obw_c %.2f "
-        "lastICMP %li lastSNMP %li snmpDeviceOK %i snmpOIDOk %i ",
-         ifaceData.interfaceId, ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
+        "file: %b "
+		"lastICMP %li lastSNMP %li snmpDeviceOK %i snmpOIDOk %i ",
+         ifaceData.interfaceId, 
+		 ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
          ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a,
          ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c,
-         ifaceData.file_var_name ,ifaceData.lastPingOK, ifaceData.lastSNMPOK,
-		 ifaceData.snmpDeviceOK, ifaceData.snmpOIDOk);
-
+         ifaceData.file_var_name, strlen(ifaceData.file_var_name),
+		 ifaceData.lastPingOK, ifaceData.lastSNMPOK, ifaceData.snmpDeviceOK, ifaceData.snmpOIDOk);
 
 		if (redisGetReply(c, (void *) &reply) != REDIS_OK) 
 			printf("\n --REDIS ERROR!  (%s) ",  reply->str );			
@@ -385,10 +386,8 @@ while(1) {
         freeReplyObject(reply);
 
 		// record also in a SET (kind of index)
-        reply = redisCommand(c, "SADD devices_bw_list %i", ifaceData.interfaceId );
-		//printf("\n %s", reply->str );
+        reply = redisCommand(c, "SADD devices_bw_list devices_bw_%06i", ifaceData.interfaceId );
         freeReplyObject(reply);
-
 		}
 
 	fflush(stdout);
