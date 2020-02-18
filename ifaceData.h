@@ -123,6 +123,7 @@ typedef struct interfaceData
   unsigned char			enable;
   unsigned char			status;					// 0: uninitialized, 1: running					
   char				      name[MAXBUF];
+  char 			        deviceName[MAXBUF];
   char				      description[MAXBUF];
   char				      peername[MAXBUF];
   struct timeb			last_access;

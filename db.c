@@ -226,6 +226,7 @@ while ((row = mysql_fetch_row(res)) != NULL) {
 
 	strcpy(ifaceAux.name, (row[4]) ? (row[4]) : "" ); 
 	strcpy(deviceAux.name, (row[5]) ? (row[5]) : "" ); 
+	strcpy(ifaceAux.deviceName, (row[5]) ? (row[5]) : "" ); 
 	strcpy(deviceAux.ip, trim((row[6]) ? (row[6]) : "") ); 
 	deviceAux.ipAddr32 = inet_addr(deviceAux.ip);
     deviceAux.access_type=(row[7]) ? atoi(row[7]) : 0;
