@@ -367,17 +367,19 @@ while(1) {
 */
 		// set individual hashes
         redisAppendCommand(c,
-        "HSET devices_bw:%06i "
+        "HSET devices_bw:%06i ifID %i devID %i "
 		"name %s descr %b "
         "ibw %.2f obw %.2f ibw_a %.2f obw_a %.2f "
         "ibw_b %.2f obw_b %.2f ibw_c %.2f obw_c %.2f "
         "file: %b "
+		"deviceName %b"
 		"lastICMP %li lastSNMP %li snmpDeviceOK %i snmpOIDOk %i ",
-         ifaceData.interfaceId, 
+         ifaceData.interfaceId, ifaceData.interfaceId, ifaceData.deviceId,
 		 ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
          ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a,
          ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c,
          ifaceData.file_var_name, strlen(ifaceData.file_var_name),
+         ifaceData.deviceName, strlen(ifaceData.deviceName),
 		 ifaceData.lastPingOK, ifaceData.lastSNMPOK, ifaceData.snmpDeviceOK, ifaceData.snmpOIDOk);
 
 		if (redisGetReply(c, (void *) &reply) != REDIS_OK) 
