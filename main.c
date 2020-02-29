@@ -329,8 +329,8 @@ while(1) {
         "ibw_b %.2f obw_b %.2f ibw_c %.2f obw_c %.2f "
         "file: %b "
 		"deviceName %b "
-		"lastICMP %li lastSNMP %li snmpDeviceOK %i snmpOIDOk %i ",
-		"cirCom %lli cirTec %lli",
+		"lastICMP %li lastSNMP %li snmpDeviceOK %i snmpOIDOk %i "
+		"cirCom %lli cirTec %lli ",
          ifaceData.interfaceId, ifaceData.interfaceId, ifaceData.deviceId,
 		 ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
          ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a,
