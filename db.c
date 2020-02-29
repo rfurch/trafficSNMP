@@ -187,7 +187,7 @@ sprintf(query, "SELECT devBW.id, devBW.dev_id, devBW.enable AS enable_bw, dev.en
    devBW.if_name, dev.nombre, dev.ip, dev.adm_acc, devBW.file_var_name, \
    devBW.alarm_lo, devBW.prio_lo, \
    devBW.description, dev.getrunn, dev.cli_acc, dev.vendor_id, dev.model_id, dev.snmp, devBW.cir2, devBW.cir_tec \
-   FROM devices_bw a LEFT JOIN devices b \
+   FROM devices_bw devBW LEFT JOIN devices dev \
    ON devBW.dev_id=dev.id WHERE devBW.enable>0 AND dev.enable>0 AND dev.snmp>0 \
    ORDER BY devBW.dev_id;");
 
