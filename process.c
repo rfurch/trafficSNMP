@@ -206,7 +206,7 @@ if ( strlen(ifs->file_var_name) > 0 ) {
 		detect_low_traffic_01((ifs->ibw_buf), &incalc);
 		detect_low_traffic_01((ifs->obw_buf), &outcalc);
 		
-		fprintf(f, "%li.%03i,%4i%02i%02i%02i%02i%02i.%03i,%lli,%lli,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%li,%li,%.4lf,%.4lf\r\n",
+		fprintf(f, "%li.%03i,%4i%02i%02i%02i%02i%02i.%03i,%lli,%lli,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%li,%li,%.4lf,%.4lf,%lli,%lli\r\n",
 				ifs->last_access.time, ifs->last_access.millitm, 
 				stm.tm_year+1900, stm.tm_mon+1, stm.tm_mday, stm.tm_hour, stm.tm_min, stm.tm_sec, 
 				ifs->last_access.millitm, 
@@ -215,7 +215,8 @@ if ( strlen(ifs->file_var_name) > 0 ) {
 				ifs->ibw_b/1000, ifs->obw_b/1000, ifs->ibw_c/1000, ifs->obw_c/1000, 
 				inavg/1000, outavg/1000,
 				ifs->ierrors, ifs->oerrors,
-				incalc, outcalc
+				incalc, outcalc,
+				ifs->cirCom, ifs->cirTec
 				);
 		fclose(f);
 		}

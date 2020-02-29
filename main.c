@@ -294,7 +294,6 @@ redisReply 			*reply = NULL;
 static time_t		old_db_time=0;
 time_t				current_time=0;
 int 				comm_error=0;
-//char 				myStr[3000];    
 
 old_db_time = current_time = time(NULL);
 
@@ -321,50 +320,7 @@ while(1) {
 	// send interface (traffic)  data to DB	
 	while (shmQueueGet(_queueRedis, &ifaceData) == 1) {
 		//  set in memory HASH 
-/* 
-        redisAppendCommand(c,
-        "HSET devices_bw:%i 'json' '{\"name\":\"%s\",\"descr\":\"%b\","
-        "\"ibw\":%.2f,\"obw\":%.2f,\"ibw_a\":%.2f,\"obw_a\":%.2f,"
-        "\"ibw_b\":%.2f,\"obw_b\":%.2f,\"ibw_c\":%.2f,\"obw_c\":%.2f,"
-        "\"file\":\"%s\",\"lastICMP\":%li,\"lastSNMP\":%li,\"snmpDeviceOK\":%i,\"snmpOIDOk\":%i}' "
-		"'name' '%s' 'descr' '%b' "
-        "'ibw' '%.2f' 'obw' '%.2f' 'ibw_a' '%.2f' 'obw_a' '%.2f' "
-        "'ibw_b' '%.2f' 'obw_b' '%.2f' 'ibw_c' '%.2f' 'obw_c' '%.2f' "
-        "'lastICMP' '%li' 'lastSNMP' '%li' 'snmpDeviceOK' '%i' 'snmpOIDOk' '%i' ",
-         ifaceData.interfaceId, ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
-         ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a,
-         ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c,
-         ifaceData.file_var_name ,ifaceData.lastPingOK, ifaceData.lastSNMPOK,
-		 ifaceData.snmpDeviceOK, ifaceData.snmpOIDOk,
-         ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
-         ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a,
-         ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c,
-         ifaceData.lastPingOK, ifaceData.lastSNMPOK,
-		 ifaceData.snmpDeviceOK, ifaceData.snmpOIDOk
-		 );
 
-
-		if (redisGetReply(c, (void *) &reply) != REDIS_OK) 
-			printf("\n --REDIS ERROR!  (%s) ",  reply->str );			
-
-		//printf("\n %s", reply->str );
-		//if ((reply->str))
-		//	printf("\n |%s|", myStr);			
-        freeReplyObject(reply);
-
-		// set individual hashes
-        redisAppendCommand(c,
-        "HSET devices_bw_%06i "
-		"'name' '%s' 'descr' '%b' "
-        "'ibw' '%.2f' 'obw' '%.2f' 'ibw_a' '%.2f' 'obw_a' '%.2f' "
-        "'ibw_b' '%.2f' 'obw_b' '%.2f' 'ibw_c' '%.2f' 'obw_c' '%.2f' "
-        "'lastICMP' '%li' 'lastSNMP' '%li' 'snmpDeviceOK' '%i' 'snmpOIDOk' '%i' ",
-         ifaceData.interfaceId, ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
-         ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a,
-         ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c,
-         ifaceData.file_var_name ,ifaceData.lastPingOK, ifaceData.lastSNMPOK,
-		 ifaceData.snmpDeviceOK, ifaceData.snmpOIDOk);
-*/
 		// set individual hashes
         redisAppendCommand(c,
         "HSET devices_bw:%06i ifID %i devID %i "
@@ -374,13 +330,15 @@ while(1) {
         "file: %b "
 		"deviceName %b "
 		"lastICMP %li lastSNMP %li snmpDeviceOK %i snmpOIDOk %i ",
+		"cirCom %lli cirTec %lli",
          ifaceData.interfaceId, ifaceData.interfaceId, ifaceData.deviceId,
 		 ifaceData.name, ifaceData.peername, strlen(ifaceData.peername),
          ifaceData.ibw, ifaceData.obw,ifaceData.ibw_a, ifaceData.obw_a,
          ifaceData.ibw_b, ifaceData.obw_b,ifaceData.ibw_c, ifaceData.obw_c,
          ifaceData.file_var_name, strlen(ifaceData.file_var_name),
          ifaceData.deviceName, strlen(ifaceData.deviceName),
-		 ifaceData.lastPingOK, ifaceData.lastSNMPOK, ifaceData.snmpDeviceOK, ifaceData.snmpOIDOk);
+		 ifaceData.lastPingOK, ifaceData.lastSNMPOK, ifaceData.snmpDeviceOK, ifaceData.snmpOIDOk,
+		 ifaceData.cirCom, ifaceData.cirTec );
 
 		if (redisGetReply(c, (void *) &reply) != REDIS_OK) 
 			printf("\n --REDIS ERROR!  (%s) ",  reply->str );			

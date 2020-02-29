@@ -144,7 +144,8 @@ typedef struct interfaceData
   short int			    exc_01_ini_h, exc_01_ini_m, exc_01_fin_h, exc_01_fin_m ;	
   short int			    exc_02_ini_h, exc_02_ini_m, exc_02_fin_h, exc_02_fin_m ;	
   char              oidIndex[200];   // OID Index for interface in IF-TABLE
-  long long int     cir2;           // commited information rate
+  long long int     cirCom;           // commited information rate (Requested)
+  long long int     cirTec;           // commited information rate (Configured)
 
   time_t            lastPingOK;     // for simplicity we repeat this values at interface level, sorry!
   time_t            lastSNMPOK;     // these two are actually related to a device....

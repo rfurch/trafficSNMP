@@ -183,13 +183,13 @@ if ( !shmDev || !shmInt )  {
 db_connect();
 
 //  send SQL query
-sprintf(query, "SELECT a.id, a.dev_id, a.enable AS enable_bw, b.enable AS enable_dev, \
-   a.if_name, b.nombre, b.ip, b.adm_acc, a.file_var_name, \
-   a.alarm_lo, a.prio_lo, \
-   a.description, b.getrunn, b.cli_acc, b.vendor_id, b.model_id, b.snmp, a.cir2 \
+sprintf(query, "SELECT devBW.id, devBW.dev_id, devBW.enable AS enable_bw, dev.enable AS enable_dev, \
+   devBW.if_name, dev.nombre, dev.ip, dev.adm_acc, devBW.file_var_name, \
+   devBW.alarm_lo, devBW.prio_lo, \
+   devBW.description, dev.getrunn, dev.cli_acc, dev.vendor_id, dev.model_id, dev.snmp, devBW.cir2, devBW.cir_tec \
    FROM devices_bw a LEFT JOIN devices b \
-   ON a.dev_id=b.id WHERE a.enable>0 AND b.enable>0 AND b.snmp>0 \
-   ORDER BY a.dev_id;");
+   ON devBW.dev_id=dev.id WHERE devBW.enable>0 AND dev.enable>0 AND dev.snmp>0 \
+   ORDER BY devBW.dev_id;");
 
 if (mysql_query(_mysql_connection_handler, query))
     {
@@ -239,7 +239,8 @@ while ((row = mysql_fetch_row(res)) != NULL) {
     deviceAux.vendor_id = (row[14]) ? atoi(row[14]) : 0;
     deviceAux.model_id = (row[15]) ? atoi(row[15]) : 0;
 	deviceAux.snmp = (row[16]) ? atoi(row[16]) : 0;
-    ifaceAux.cir2=(row[17]) ? atoll(row[17]) : 0;
+    ifaceAux.cirCom=(row[17]) ? atoll(row[17]) : 0;
+    ifaceAux.cirTec=(row[18]) ? atoll(row[18]) : 0;
 
 	// search for device in shm
 	for (i=0, deviceFound=0 ; i<shmDev->nDevices ; i++) {
@@ -270,7 +271,8 @@ while ((row = mysql_fetch_row(res)) != NULL) {
 		if (shmInt->d[j].deviceId == ifaceAux.deviceId && shmInt->d[j].interfaceId == ifaceAux.interfaceId ) {
 			interfaceFound= 1;
 			shmInt->d[j].enable = ifaceAux.enable;
-			shmInt->d[j].cir2 = ifaceAux.cir2;
+			shmInt->d[j].cirCom = ifaceAux.cirCom;
+			shmInt->d[j].cirTec = ifaceAux.cirTec;
 			break;  // no need to continue on the loop
 			}
 		}
@@ -390,7 +392,7 @@ while ((row = mysql_fetch_row(res)) != NULL) {
     deviceAux.vendor_id = (row[14]) ? atoi(row[14]) : 0;
     deviceAux.model_id = (row[15]) ? atoi(row[15]) : 0;
 	deviceAux.snmp = (row[16]) ? atoi(row[16]) : 0;
-    ifaceAux.cir2=(row[17]) ? atoll(row[17]) : 0;
+    ifaceAux.cirCom=(row[17]) ? atoll(row[17]) : 0;
 
 	// search for device in shm
 	for (i=0, deviceFound=0 ; i<shmDev->nDevices ; i++) {
@@ -421,7 +423,7 @@ while ((row = mysql_fetch_row(res)) != NULL) {
 		if (shmInt->d[j].deviceId == ifaceAux.deviceId && shmInt->d[j].interfaceId == ifaceAux.interfaceId ) {
 			interfaceFound= 1;
 			shmInt->d[j].enable = ifaceAux.enable;
-			shmInt->d[j].cir2 = ifaceAux.cir2;
+			shmInt->d[j].cirCom = ifaceAux.cirCom;
 			break;  // no need to continue on the loop
 			}
 		}
