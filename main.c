@@ -327,7 +327,7 @@ while(1) {
 		"name %s descr %b "
         "ibw %.2f obw %.2f ibw_a %.2f obw_a %.2f "
         "ibw_b %.2f obw_b %.2f ibw_c %.2f obw_c %.2f "
-        "file: %b "
+        "file %b "
 		"deviceName %b "
 		"lastICMP %li lastSNMP %li snmpDeviceOK %i snmpOIDOk %i "
 		"cirCom %lli cirTec %lli ",
