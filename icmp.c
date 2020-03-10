@@ -262,6 +262,7 @@ struct iphdr            *iphdr;
 int                     ipv4HeaderLen=0;
 int                     recvDev=0;
 char                    *p = NULL;
+int                     retVal=-10;
 
 if (!address || !receiveBuffer)
     return(-1);
@@ -272,8 +273,19 @@ icmpPacket = (struct icmp *) (((char *)receiveBuffer) + ipv4HeaderLen);
 p = (char *) &(icmpPacket->icmp_data);
 
 // verify received data
+
+if (_verbose > 3) {
+    printf("\n\n header len: %i \n\n", ipv4HeaderLen);
+    printBuffer(&receiveBuffer[20], len);
+
+    printf("\n id: %i %i", icmpPacket->icmp_id, getpid());
+    printf("\n triptime: %li", getTripTime( (struct timeval *) &(icmpPacket->icmp_data) ));
+    printf("\n address: %i %i %i %s", iphdr->daddr,  iphdr->saddr, inet_addr(address), address);
+    }
+            
+
 if (iphdr->saddr == inet_addr(address)) {       // src IP match
-    if ( icmpPacket->icmp_id == getpid() )  {    // ID (pid) matches...
+  //  if ( icmpPacket->icmp_id == getpid() )  {    // ID (pid) matches...
         int m1=0, m2=0, m3=0, len=0;
 
         len+=sizeof(struct timeval);
@@ -291,19 +303,15 @@ if (iphdr->saddr == inet_addr(address)) {       // src IP match
             if (tripTime)
                 *tripTime = getTripTime( (struct timeval *) &(icmpPacket->icmp_data) );
 
-            /*printf("\n\n header len: %i \n\n", ipv4HeaderLen);
-            printBuffer(&receiveBuffer[20], len);
-
-            printf("\n id: %i %i", icmpPacket->icmp_id, getpid());
-            printf("\n triptime: %li", getTripTime( (struct timeval *) &(icmpPacket->icmp_data) ));
-            printf("\n address: %i %i %i %s", iphdr->daddr,  iphdr->saddr, inet_addr(address), address);
-            */
             return(0);
             }
-        }
+        else retVal = -7;    
+    //    }
+    //else retVal = -8;    
     }
+else retVal = -9;    
 
-return(-1);
+return(retVal);
 }
 
 //--------------------------------------------------------------------
@@ -318,7 +326,7 @@ int ping(char *address, int timeOut, long int *roundTripTime) {
 int                 localSocket = 0;
 fd_set              rfds;
 struct timeval      tv;
-int                 auxErr=0, retVal = -9, receiveLen=0;
+int                 auxErr=0, retVal = -9, r=0, receiveLen=0;
 int                 device = 9;
 char                receiveBuffer[MAXLLEN];
 int                 sockErr=0;
@@ -354,10 +362,10 @@ else {
         else if (auxErr)   {
             if (FD_ISSET(localSocket, &rfds))   {
                 if (receiveICMP(localSocket, receiveBuffer, &receiveLen) == 0) {
-                    if (validateICMP(address, receiveBuffer, receiveLen, device, roundTripTime) == 0)
+                    if ( (r = validateICMP(address, receiveBuffer, receiveLen, device, roundTripTime)) == 0)
                         retVal = 0;         // this is the ONLY correct path
                     else 
-                        retVal = -3;    // validate error
+                        retVal = r;    // validate error
                     }
                 }
             }

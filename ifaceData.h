@@ -143,7 +143,9 @@ typedef struct interfaceData
   int				        alarm_status;
   short int			    exc_01_ini_h, exc_01_ini_m, exc_01_fin_h, exc_01_fin_m ;	
   short int			    exc_02_ini_h, exc_02_ini_m, exc_02_fin_h, exc_02_fin_m ;	
-  char              oidIndex[200];   // OID Index for interface in IF-TABLE
+  char              oidIndex[MAXBUF];   // OID Index for interface in IF-TABLE
+  char              oidInOctets[MAXBUF];   // oid, overrides found OID
+  char              oidOutOctets[MAXBUF];   // oid, overrides found OID
   long long int     cirCom;           // commited information rate (Requested)
   long long int     cirTec;           // commited information rate (Configured)
 

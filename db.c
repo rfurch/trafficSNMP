@@ -186,7 +186,8 @@ db_connect();
 sprintf(query, "SELECT devBW.id, devBW.dev_id, devBW.enable AS enable_bw, dev.enable AS enable_dev, \
    devBW.if_name, dev.nombre, dev.ip, dev.adm_acc, devBW.file_var_name, \
    devBW.alarm_lo, devBW.prio_lo, \
-   devBW.description, dev.getrunn, dev.cli_acc, dev.vendor_id, dev.model_id, dev.snmp, devBW.cir2, devBW.cir_tec \
+   devBW.description, dev.getrunn, dev.cli_acc, dev.vendor_id, dev.model_id, \
+   dev.snmp, devBW.cir2, devBW.cir_tec, devBW.oid_in_octets,  devBW.oid_out_octets \
    FROM devices_bw devBW LEFT JOIN devices dev \
    ON devBW.dev_id=dev.id WHERE devBW.enable>0 AND dev.enable>0 AND dev.snmp>0 \
    ORDER BY devBW.dev_id;");
@@ -241,6 +242,8 @@ while ((row = mysql_fetch_row(res)) != NULL) {
 	deviceAux.snmp = (row[16]) ? atoi(row[16]) : 0;
     ifaceAux.cirCom=(row[17]) ? atoll(row[17]) : 0;
     ifaceAux.cirTec=(row[18]) ? atoll(row[18]) : 0;
+    strcpy(ifaceAux.oidInOctets, (row[19]) ? (row[19]) : "");
+    strcpy(ifaceAux.oidOutOctets, (row[20]) ? (row[20]) : "");
 
 	// search for device in shm
 	for (i=0, deviceFound=0 ; i<shmDev->nDevices ; i++) {

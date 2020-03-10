@@ -254,9 +254,10 @@ for (i=0 ; i<_shmDevicesArea->nDevices ; i++)  {
 printf("\n\n Checking ICMP.....");	
 
 for (i=0 ; i<_shmDevicesArea->nDevices ; i++)  {
+	int r1=0,r2=0,r3=0;
 	deviceData *d = &(_shmDevicesArea->d[i]);
-	if ( ! ( ping(d->ip, 2000, NULL)==0 || ping(d->ip, 2000, NULL)==0 || ping(d->ip, 2000, NULL)==0 ) ) {
-		printf("  NOT reachable via ICMP. Aborting test... \n\n ");
+	if ( ! ( (r1=ping(d->ip, 2000, NULL))==0 || (r2=ping(d->ip, 2000, NULL))==0 || (r3=ping(d->ip, 2000, NULL))==0 ) ) {
+		printf("  NOT reachable via ICMP. Aborting test... (%i,%i,%i) \n\n ", r1,r2,r3);
 		fflush(stdout);
 		return(-1);
 		}

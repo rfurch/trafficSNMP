@@ -122,7 +122,12 @@ iface->obytes_prev = iface->obytes;
 iface->ibytes = 0;
 iface->obytes = 0;
 
-if (d->use64bitsCounters) {
+// explicit OID overrides found ones!
+if (strlen(iface->oidInOctets) > 5 && strlen(iface->oidOutOctets) > 5 )  {
+    strcpy(inCounterOid, iface->oidInOctets);
+    strcpy(outCounterOid, iface->oidOutOctets);
+    }
+else if (d->use64bitsCounters) {
     sprintf(inCounterOid, "1.3.6.1.2.1.31.1.1.1.6.%s", iface->oidIndex);
     sprintf(outCounterOid, "1.3.6.1.2.1.31.1.1.1.10.%s", iface->oidIndex);
     }
@@ -336,6 +341,13 @@ int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstO
                                         d->interfacesFoundInSNMPTable++;
                                         shmInt->d[iface].snmpOIDOk = 1;
 
+                                        }
+
+                                    // now we verify if OID is explicitly defined in DB
+
+                                    if ( strlen(shmInt->d[iface].oidInOctets) > 5 && strlen(shmInt->d[iface].oidInOctets) > 5 ) {
+                                        d->interfacesFoundInSNMPTable++;
+                                        shmInt->d[iface].snmpOIDOk = 1;
                                         }
                                     }    
                                 }   
