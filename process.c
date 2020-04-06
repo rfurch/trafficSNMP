@@ -315,10 +315,10 @@ if (d->snmpVersion > -1) {
 	int ret = 0, iface = 0;
 
 	printf("\n Testing ifXtable ...."); fflush(stdout);
-	if ( snmpVerifyIfXTable (d, NULL ) == 0)
-		printf("   OK");
+	if ( (ret = snmpVerifyIfXTable (d, NULL )) == 0)
+		printf("   OK (ret: %i)", ret);
 	else 
-		printf("   Not present ....");
+		printf("   Not present .... (ret: %i)", ret);
 
 	printf("\n Testing Interfaces ID...."); fflush(stdout);
 
