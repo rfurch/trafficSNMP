@@ -533,7 +533,9 @@ while (1) {
 
 			_shmDevicesArea->d[devToMeasureFound].lastRead = t;
 
-			if ( (time(NULL) - _shmDevicesArea->d[devToMeasureFound].lastPingOK) < 100 ) {
+			// RFurch, commented to avoid ICMP visibility problems
+			//if ( (time(NULL) - _shmDevicesArea->d[devToMeasureFound].lastPingOK) < 100 ) 
+			    {
 
 				if (_verbose > 1) {
 					printf("\n Worker %i collecting info via SNMP from device (%s, %s)", getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip);
@@ -593,15 +595,15 @@ while (1) {
 						}
 					pthread_mutex_unlock (& (_shmDevicesArea->lock));						
 					}
-				else {	
-					if (_verbose > 1) {
-						printf("\n Worker %i device (%s, %s) NOT reachable via ICMP (last ping %li): No data collection...",
-						getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip,
-						(time(NULL) - _shmDevicesArea->d[devToMeasureFound].lastPingOK));
-
-						fflush(stdout);
-						}
-					}
+//				else {	
+//					if (_verbose > 1) {
+//						printf("\n Worker %i device (%s, %s) NOT reachable via ICMP (last ping %li): No data collection...",
+//						getpid(), _shmDevicesArea->d[devToMeasureFound].name, _shmDevicesArea->d[devToMeasureFound].ip,
+//						(time(NULL) - _shmDevicesArea->d[devToMeasureFound].lastPingOK));
+//
+//						fflush(stdout);
+//						}
+//					}
 				}	 // if  there is a device to measure
 			}   // else no devices to configure
 
