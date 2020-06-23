@@ -338,7 +338,7 @@ while(1) {
          ifaceData.file_var_name, strlen(ifaceData.file_var_name),
          ifaceData.deviceName, strlen(ifaceData.deviceName),
 		 ifaceData.lastPingOK, ifaceData.lastSNMPOK, ifaceData.snmpDeviceOK, ifaceData.snmpOIDOk,
-		 ifaceData.cirCom, ifaceData.cirTec );
+		 ifaceData.cirCom, ifaceData.cirTec ); 
 
 		if (redisGetReply(c, (void *) &reply) != REDIS_OK) 
 			printf("\n --REDIS ERROR!  (%s) ",  reply->str );			
