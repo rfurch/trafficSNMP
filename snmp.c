@@ -910,6 +910,8 @@ int snmpVerifyIfXTable (deviceData *d, unsigned long long int *inCounter )
     char           *names[SNMP_MAX_CMDLINE_OIDS];
     oid             name[MAX_OID_LEN];
     size_t          name_length;
+    oid                     base_oid[MAX_OID_LEN];
+    size_t                  base_len = 0;
     int             status;
     int             failures = 0;
     int             exitval = 1;
@@ -920,7 +922,13 @@ int snmpVerifyIfXTable (deviceData *d, unsigned long long int *inCounter )
     netsnmp_variable_list   *vars;
 
     SOCK_STARTUP;
-    names[current_name++] = ".1.3.6.1.2.1.31.1.1.1.6.1";
+    names[current_name++] = ".1.3.6.1.2.1.31.1.1.1.6";
+
+    base_len = MAX_OID_LEN;
+    if (snmp_parse_oid("1.3.6.1.2.1.31.1.1.1.6", base_oid, &base_len) == NULL) {
+        snmp_perror("1.3.6.1.2.1.31.1.1.1.6");
+        goto out;
+    }
 
     //init_snmp("myprog");
     snmp_sess_init( & (session) );
@@ -937,7 +945,7 @@ int snmpVerifyIfXTable (deviceData *d, unsigned long long int *inCounter )
     }
 
     // Create PDU for GET request and add object names to request.
-    pdu = snmp_pdu_create(SNMP_MSG_GET);
+    pdu = snmp_pdu_create(SNMP_MSG_GETNEXT);
     for (count = 0; count < current_name; count++) {
         name_length = MAX_OID_LEN;
         if (!snmp_parse_oid(names[count], name, &name_length)) {
@@ -959,8 +967,17 @@ int snmpVerifyIfXTable (deviceData *d, unsigned long long int *inCounter )
     if (status == STAT_SUCCESS) {
         if (response->errstat == SNMP_ERR_NOERROR) {
             for (vars = response->variables, counter=0; vars; counter++, vars = vars->next_variable) {
-                if (_verbose > 2)
+
+                if (_verbose > 2) {
                     print_variable(vars->name, vars->name_length, vars);
+					fflush(stdout);	
+					}
+
+                if (netsnmp_oid_is_subtree(base_oid, base_len, vars->name, vars->name_length) != 0) {
+                    //   not part of this subtree 
+                    exitval = -1;
+                    break;
+                    }
 
                 if (vars->type == ASN_COUNTER64) {
                     long i64 = 0;
@@ -971,7 +988,10 @@ int snmpVerifyIfXTable (deviceData *d, unsigned long long int *inCounter )
 
                     if (inCounter)    
                         *inCounter = (unsigned long long int) i64 ;
-                    }
+                
+                    exitval = 0;
+                    break;
+				    }
                 }
         } else {
             if (_verbose > 3) 
