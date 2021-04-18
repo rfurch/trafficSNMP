@@ -221,12 +221,10 @@ int 				comm_error=0;
 
 while(1) {
 
-	if (_verbose > 3) 
-		printf("\n           mainLoop ... ");
 
 	if (_verbose > 6)
 		for (i=0 ; i<_shmDevicesArea->nDevices ; i++)
-			printf("\n            device %i snmpConfigured: %i snmpCaptured: %i ", _shmDevicesArea->d[i].deviceId, _shmDevicesArea->d[i].snmpConfigured, _shmDevicesArea->d[i].snmpCaptured);
+			printf("\r            device %i snmpConfigured: %i snmpCaptured: %i ", _shmDevicesArea->d[i].deviceId, _shmDevicesArea->d[i].snmpConfigured, _shmDevicesArea->d[i].snmpCaptured);
 
 	// send interface (traffic)  data to DB	
 	while (shmQueueGet(_queueInterfaces, &ifaceData) == 1) {
@@ -471,7 +469,7 @@ int 	devToMeasureFound=0;
 time_t	t=0;
 int 	snmpCaptureOk=0;   // flag to detect changes un traffic counters as 'valid reading' 
 
-sleep(10 + rand()%20);  
+sleep(2 + rand()%10);  
 
 if (_verbose > 1) {
 	printf("\n Worker %i start!", getpid());
@@ -674,8 +672,9 @@ else {
 	exit(-1);
 	}
 
+
 // extra worker to SEND ICMP
-if ( (workerPID = fork()) > 0 )  {    // parent (this process)
+/*if ( (workerPID = fork()) > 0 )  {    // parent (this process)
 	}
 else if(workerPID == 0)  {    // worker
 	prctl(PR_SET_PDEATHSIG, SIGTERM); // every child will receive SIGTERM in case parent ends
@@ -686,7 +685,6 @@ else {
 	fflush(stdout);
 	exit(-1);
 	}
-
 
 // extra worker to RECEIVE ICMP
 if ( (workerPID = fork()) > 0 )  {    // parent (this process)
@@ -699,7 +697,7 @@ else {
 	printf ("\n\n\n FORK ERROR  (workerReceiveICMP)!!!");
 	fflush(stdout);
 	exit(-1);
-	}
+	}*/
 
 return 1;
 }
@@ -794,11 +792,11 @@ shmInit();
 
 // if we are in 'checking device mode', just check and exit
 if (_deviceToCheck > 0) {
-	verifyDevice(_deviceToCheck);
-	exit(0);
+//	verifyDevice(_deviceToCheck);
+//	exit(0);
 	}
 
-while (dbread (_shmDevicesArea, _shmInterfacesArea) <= 0)
+while (dbread (_shmDevicesArea, _shmInterfacesArea, _deviceToCheck) <= 0)
   {
   printf("\n\n No devices configured? check device and device_bw tables ! \n\n");
   sleep(1);

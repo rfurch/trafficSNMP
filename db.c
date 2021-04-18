@@ -74,10 +74,14 @@ extern 	int	_speech_prio;		// minimum priority value to trigger speech messages
 int db_connect()
 {
 int tout = 30;
+my_bool reconnect = 1;
+
 
 if (_mysql_connection_handler == NULL)
 	{
 	_mysql_connection_handler = mysql_init(NULL);
+
+	mysql_options(_mysql_connection_handler, MYSQL_OPT_RECONNECT, &reconnect);
 
 	mysql_options(_mysql_connection_handler, MYSQL_OPT_CONNECT_TIMEOUT, &tout);
 	mysql_options(_mysql_connection_handler, MYSQL_OPT_READ_TIMEOUT, &tout);
@@ -164,8 +168,9 @@ return(1);
 //-------------------------------------------------------------------
 
 // load from database devices / interfaces to query via SNMP
+// if deviceNum > 0 reads only one device, for testing
 
-int dbread (devicesShm *shmDev, interfacesShm *shmInt)  {
+int dbread (devicesShm *shmDev, interfacesShm *shmInt, int deviceNum)  {
 
 char 			query[2000];
 int        	 	i=0, j=0;
@@ -183,14 +188,27 @@ if ( !shmDev || !shmInt )  {
 db_connect();
 
 //  send SQL query
-sprintf(query, "SELECT devBW.id, devBW.dev_id, devBW.enable AS enable_bw, dev.enable AS enable_dev, \
+
+if (deviceNum > 0) {
+	sprintf(query, "SELECT devBW.id, devBW.dev_id, devBW.enable AS enable_bw, dev.enable AS enable_dev, \
    devBW.if_name, dev.nombre, dev.ip, dev.adm_acc, devBW.file_var_name, \
    devBW.alarm_lo, devBW.prio_lo, \
    devBW.description, dev.getrunn, dev.cli_acc, dev.vendor_id, dev.model_id, \
-   dev.snmp, devBW.cir2, devBW.cir_tec, devBW.oid_in_octets,  devBW.oid_out_octets \
+   dev.snmp, dev.snmp_comm,devBW.cir2, devBW.cir_tec, devBW.oid_in_octets,  devBW.oid_out_octets \
+   FROM devices_bw devBW LEFT JOIN devices dev \
+   ON devBW.dev_id=dev.id WHERE devBW.enable>0 AND dev.enable>0 AND dev.snmp>0  AND dev.id=%i\
+   ORDER BY devBW.dev_id;", deviceNum);
+	}
+else {
+	sprintf(query, "SELECT devBW.id, devBW.dev_id, devBW.enable AS enable_bw, dev.enable AS enable_dev, \
+   devBW.if_name, dev.nombre, dev.ip, dev.adm_acc, devBW.file_var_name, \
+   devBW.alarm_lo, devBW.prio_lo, \
+   devBW.description, dev.getrunn, dev.cli_acc, dev.vendor_id, dev.model_id, \
+   dev.snmp, dev.snmp_comm,devBW.cir2, devBW.cir_tec, devBW.oid_in_octets,  devBW.oid_out_octets \
    FROM devices_bw devBW LEFT JOIN devices dev \
    ON devBW.dev_id=dev.id WHERE devBW.enable>0 AND dev.enable>0 AND dev.snmp>0 \
    ORDER BY devBW.dev_id;");
+	}
 
 if (mysql_query(_mysql_connection_handler, query))
     {
@@ -240,10 +258,11 @@ while ((row = mysql_fetch_row(res)) != NULL) {
     deviceAux.vendor_id = (row[14]) ? atoi(row[14]) : 0;
     deviceAux.model_id = (row[15]) ? atoi(row[15]) : 0;
 	deviceAux.snmp = (row[16]) ? atoi(row[16]) : 0;
-    ifaceAux.cirCom=(row[17]) ? atoll(row[17]) : 0;
-    ifaceAux.cirTec=(row[18]) ? atoll(row[18]) : 0;
-    strcpy(ifaceAux.oidInOctets, (row[19]) ? (row[19]) : "");
-    strcpy(ifaceAux.oidOutOctets, (row[20]) ? (row[20]) : "");
+	strcpy(deviceAux.snmp_comm, (row[17]) ? row[17] : "p");
+    ifaceAux.cirCom=(row[18]) ? atoll(row[18]) : 0;
+    ifaceAux.cirTec=(row[19]) ? atoll(row[19]) : 0;
+    strcpy(ifaceAux.oidInOctets, (row[20]) ? (row[20]) : "");
+    strcpy(ifaceAux.oidOutOctets, (row[21]) ? (row[21]) : "");
 
 	// search for device in shm
 	for (i=0, deviceFound=0 ; i<shmDev->nDevices ; i++) {
@@ -596,6 +615,27 @@ db_connect();
 sprintf(sqlquery, "UPDATE topology.devices_mem SET last_icmp_ok=FROM_UNIXTIME(%li),  last_snmp_ok=FROM_UNIXTIME(%li) WHERE id=%i;", d->lastPingOK, d->lastSNMPOK, d->deviceId);
 //printf("\n --- %s ---", sqlquery); fflush(stdout);
 mysql_query(_mysql_connection_handler, sqlquery);
+
+return(retval);
+}
+
+//-------------------------------------------------------------------
+int update_devices_snmp_ver_comm(deviceData *d)
+{
+char                sqlquery[200];
+int                 retval=0;
+
+db_connect();
+
+printf("\n --- MySQL PING: %i ---", mysql_ping(_mysql_connection_handler)); fflush(stdout);
+
+
+sprintf(sqlquery, "UPDATE topology.devices SET snmp=%i,  snmp_comm=\"%s\" WHERE id=%i;", d->snmp, d->snmp_comm , d->deviceId);
+printf("\n --- %s ---", sqlquery); fflush(stdout);
+retval = mysql_query(_mysql_connection_handler, sqlquery);
+printf("\n mysql_query: %i", retval);
+if (retval) 
+	printf("\n %s", mysql_error(_mysql_connection_handler));
 
 return(retval);
 }

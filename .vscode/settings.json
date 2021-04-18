@@ -3,6 +3,7 @@
         "*.tcc": "cpp",
         "type_traits": "cpp",
         "ip_icmp.h": "c",
-        "shm_q.h": "c"
+        "shm_q.h": "c",
+        "time.h": "c"
     }
 }

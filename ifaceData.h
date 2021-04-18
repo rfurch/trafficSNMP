@@ -158,7 +158,7 @@ typedef struct interfaceData
   int               snmpOIDOk;      // SNMP OID for THIS interface was captured successfuly
   int               snmpDeviceOK;   // >0 if the DEVICE is SNMP readable
 
-
+  int               interfaceFound;
   }interfaceData;
 
 // structure to store device properties
@@ -188,6 +188,7 @@ typedef struct deviceData
   short	int		    vendor_id;
   short	int		    model_id;
   int             snmp; // 0: no   1,2 snmp version 
+  char            snmp_comm[4]; // p:  public, v: Vostok3KA
   char 			      snmpCommunity[MAXBUF];
   int             snmpVersion;
   int             use64bitsCounters;
@@ -312,12 +313,13 @@ void* create_shared_memory(size_t size);
 int db_connect();
 int db_disconnect();
 int to_db_mem (interfaceData *d);
-int dbread (devicesShm *shmDev, interfacesShm *shmInt);
+int dbread (devicesShm *shmDev, interfacesShm *shmInt, int deviceNum);
 int dbreadOneDevice (devicesShm *shmDev, interfacesShm *shmInt, int deviceId);
 int to_db_hist (deviceData *d);
 int delete_from_db_mem ();
 int db_keepalive(char *name);
 int report_alarm(deviceData *d, interfaceData *iface);
+int update_devices_snmp_ver_comm(deviceData *d);
 int update_devices_mem(deviceData *d);
 
 
@@ -351,7 +353,6 @@ int snmp_process( deviceData *d, int infd, int outfd, pid_t child_pid, int dev_i
 int verifyDevice (int deviceId);
 int retriveBWDataFromFile(  );
 int saveToFile( interfaceData *ifs );
-int verifyDevice (int deviceId);
 
 
 

@@ -325,7 +325,11 @@ if (d->snmpVersion > -1) {
 	// get interface position in IF-TABLE (1.3.6.1.2.1.2.2.1.2). In case of error we cannot continue...
 	// in case of error we also look into ifXtable  (1.3.6.1.2.1.31.1.1.1.1) 
 	if ( (ret = getIndexOfInterfaces( d, _shmInterfacesArea, "1.3.6.1.2.1.2.2.1.2")) != 0 ) {
+		if (_verbose > 2)
+			printf("\n getIndexOfInterfaces [1]: %i", ret);		
 		if ( (ret = getIndexOfInterfaces( d, _shmInterfacesArea, "1.3.6.1.2.1.31.1.1.1.1")) != 0 ) {
+			if (_verbose > 2)
+				printf("\n getIndexOfInterfaces [2]: %i", ret);		
 			printf("\n\n UNABLE to find some Interfaces (device *%s, %s) error returned: %i !! \n\n", d->name, d->ip, ret );
 
 			}
