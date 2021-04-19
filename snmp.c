@@ -388,7 +388,16 @@ int getIndexOfInterfaces( deviceData *d, interfacesShm *shmInt, char *walkFirstO
                     for (iface = 0 ; iface < shmInt->nInterfaces ; iface++)   {
                         if (shmInt->d[iface].enable > 0 && d->deviceId == shmInt->d[iface].deviceId) {
                             if (strlen(shmInt->d[iface].oidIndex)<1) {
-                                if (strcasecmp(shmInt->d[iface].name, (char *)(vars->val.string)) == 0) {
+				
+				// RFurch,  19/4/21:  due to errors in name length,  its important to
+    				// compare  with proper length:  MAX (database, SNMP)
+    
+				int nameMaxLen = (strlen(shmInt->d[iface].name) > vars->val_len) ? strlen(shmInt->d[iface].name) : vars->val_len;
+
+                                if ( _verbose > 7)            
+                                    printf("\n --- Searching string: |%s| comparing with: |%s|%i| \n" , shmInt->d[iface].name, vars->val.string , nameMaxLen );
+
+                                if (strncasecmp(shmInt->d[iface].name, (char *)(vars->val.string), nameMaxLen) == 0) {
                                     if ( _verbose > 1)            
                                         printf("\n --- FOUND:  |%s|%s| \n" , vars->val.string, mybuff);
                                     strcpy(shmInt->d[iface].oidIndex, strrchr(mybuff, '.') + 1);
